@@ -110,6 +110,15 @@ class ReaderPage extends StatelessWidget {
     final imageUrl = convertDriveLinkToImageUrl(link);
     final isFolder = isDriveFolderLink(link);
 
+    final demoImages = [
+      "https://flutter.github.io/assets-for-api-docs/assets/widgets/owl.jpg",
+      "https://flutter.github.io/assets-for-api-docs/assets/widgets/owl-2.jpg",
+      "https://flutter.github.io/assets-for-api-docs/assets/widgets/puffin.jpg",
+      "https://flutter.github.io/assets-for-api-docs/assets/widgets/owl.jpg",
+      "https://flutter.github.io/assets-for-api-docs/assets/widgets/owl-2.jpg",
+      "https://flutter.github.io/assets-for-api-docs/assets/widgets/puffin.jpg",
+    ];
+
     return Scaffold(
       body: Stack(
         children: [
@@ -129,7 +138,7 @@ class ReaderPage extends StatelessWidget {
                           context,
                           MaterialPageRoute(
                             builder: (context) => ReaderPage(
-                              link: "https://picsum.photos/800/1200",
+                              link: demoImages[index],
                             ),
                           ),
                         );
