@@ -108,6 +108,7 @@ class ReaderPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final imageUrl = convertDriveLinkToImageUrl(link);
+    final isFolder = isDriveFolderLink(link);
 
     return Scaffold(
       body: Stack(
@@ -115,16 +116,16 @@ class ReaderPage extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.all(0),
             child: Center(
-              child: imageUrl == null
+              child: isFolder
                   ? Text(
-                "Link không hợp lệ\n\n$link",
+                "Folder link detected\n\nGallery mode coming soon\n\n$link",
                 textAlign: TextAlign.center,
               )
                   : InteractiveViewer(
                 minScale: 1,
                 maxScale: 5,
                 child: Image.network(
-                  imageUrl,
+                  imageUrl!,
                   fit: BoxFit.fitWidth,
                   errorBuilder: (context, error, stackTrace) {
                     return const Center(
@@ -183,6 +184,10 @@ class ReaderPage extends StatelessWidget {
     );
   }
 }
+bool isDriveFolderLink(String link) {
+  return link.contains('/drive/folders/');
+}
+
 String? convertDriveLinkToImageUrl(String link) {
   final regExp = RegExp(r'/d/([^/]+)');
   final match = regExp.firstMatch(link);
