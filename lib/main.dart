@@ -107,17 +107,42 @@ class ReaderPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final imageUrl = convertDriveLinkToImageUrl(link);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("Đọc truyện"),
       ),
-      body: Center(
-        child: Text(
-          "Đang mở truyện...\nDriveReader v1.2\n\n$link",
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 22),
+      body: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Center(
+          child: imageUrl == null
+              ? Text(
+            "Link không hợp lệ\n\n$link",
+            textAlign: TextAlign.center,
+          )
+              : Image.network(
+            imageUrl,
+            fit: BoxFit.contain,
+          ),
         ),
       ),
     );
   }
+}
+String? convertDriveLinkToImageUrl(String link) {
+  final regExp = RegExp(r'/d/([^/]+)');
+  final match = regExp.firstMatch(link);
+
+  if (match == null) {
+    return null;
+  }
+
+  final fileId = match.group(1);
+
+  if (fileId == null || fileId.isEmpty) {
+    return null;
+  }
+
+  return 'https://drive.google.com/uc?export=view&id=$fileId';
 }
