@@ -123,7 +123,18 @@ class ReaderPage extends StatelessWidget {
                 crossAxisSpacing: 12,
                 padding: const EdgeInsets.all(16),
                 children: List.generate(6, (index) {
-                  return Card(
+                  return InkWell(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ReaderPage(
+                              link: "https://picsum.photos/800/1200",
+                            ),
+                          ),
+                        );
+                      },
+                      child: Card(
                     color: Colors.grey[900],
                     child: Column(
                       children: [
@@ -155,9 +166,10 @@ class ReaderPage extends StatelessWidget {
                         ),
                       ],
                     ),
-                  );
+                  ),
+                );
                 }),
-              )
+                )
                   : InteractiveViewer(
                 minScale: 1,
                 maxScale: 5,
@@ -226,6 +238,10 @@ bool isDriveFolderLink(String link) {
 }
 
 String? convertDriveLinkToImageUrl(String link) {
+  if (link.startsWith('http') && !link.contains('drive.google.com')) {
+    return link;
+  }
+
   final regExp = RegExp(r'/d/([^/]+)');
   final match = regExp.firstMatch(link);
 
