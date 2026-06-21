@@ -125,11 +125,35 @@ class ReaderPage extends StatelessWidget {
                 children: List.generate(6, (index) {
                   return Card(
                     color: Colors.grey[900],
-                    child: Center(
-                      child: Text(
-                        "Page ${index + 1}",
-                        style: const TextStyle(color: Colors.white),
-                      ),
+                    child: Column(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: Colors.grey[800],
+                              borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(12),
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.image,
+                              color: Colors.white54,
+                              size: 48,
+                            ),
+                          ),
+                        ),
+
+                        Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: Text(
+                            "Page ${index + 1}",
+                            style: const TextStyle(
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   );
                 }),
