@@ -282,7 +282,7 @@ String? extractDriveFolderId(String link) {
 Future<List<String>> fetchDriveFolderImages(String folderId) async {
   final response = await http.get(
     Uri.parse(
-      'https://www.googleapis.com/drive/v3/files?q=%27$folderId%27+in+parents&fields=files(id,name,mimeType)&key=AIzaSyAHIpqx856jNpz9nrD7BBwakLkTY89cHnc',
+      'https://www.googleapis.com/drive/v3/files?q=%27$folderId%27+in+parents&fields=files(id,name,mimeType,thumbnailLink)&key=AIzaSyAHIpqx856jNpz9nrD7BBwakLkTY89cHnc',
     ),
   );
 
@@ -298,6 +298,12 @@ Future<List<String>> fetchDriveFolderImages(String folderId) async {
   return files
       .where((file) => file['mimeType'].toString().startsWith('image/'))
       .map<String>((file) {
+    final thumbnail = file['thumbnailLink'] as String?;
+
+    if (thumbnail != null && thumbnail.isNotEmpty) {
+      return thumbnail.replaceAll(RegExp(r'=s\d+'), '=s1600');
+    }
+
     final id = file['id'];
     return 'https://drive.google.com/uc?export=view&id=$id';
   })
