@@ -7,6 +7,16 @@ void main() {
   runApp(const DriveReaderApp());
 }
 
+class DriveImage {
+  final String thumbnailUrl;
+  final String fullUrl;
+
+  const DriveImage({
+    required this.thumbnailUrl,
+    required this.fullUrl,
+  });
+}
+
 class DriveReaderApp extends StatelessWidget {
   const DriveReaderApp({super.key});
 
@@ -88,7 +98,7 @@ class _HomePageState extends State<HomePage> {
                   final folderId = extractDriveFolderId(link);
                   print('FOLDER ID: $folderId');
 
-                  List<String> images = [];
+                  List<DriveImage> images = [];
 
                   if (folderId != null) {
                     images = await fetchDriveFolderImages(folderId);
@@ -116,7 +126,7 @@ class _HomePageState extends State<HomePage> {
 }
 class ReaderPage extends StatelessWidget {
   final String link;
-  final List<String> images;
+  final List<DriveImage> images;
 
   const ReaderPage({
     super.key,
@@ -129,16 +139,8 @@ class ReaderPage extends StatelessWidget {
     final imageUrl = convertDriveLinkToImageUrl(link);
     final isFolder = isDriveFolderLink(link);
 
-    final demoImages = [
-      "https://flutter.github.io/assets-for-api-docs/assets/widgets/owl.jpg",
-      "https://flutter.github.io/assets-for-api-docs/assets/widgets/owl-2.jpg",
-      "https://flutter.github.io/assets-for-api-docs/assets/widgets/puffin.jpg",
-      "https://flutter.github.io/assets-for-api-docs/assets/widgets/owl.jpg",
-      "https://flutter.github.io/assets-for-api-docs/assets/widgets/owl-2.jpg",
-      "https://flutter.github.io/assets-for-api-docs/assets/widgets/puffin.jpg",
-    ];
-    final folderImages =
-    images.isNotEmpty ? images : demoImages;
+
+    final folderImages = images;
 
     return Scaffold(
       body: Stack(
@@ -159,7 +161,7 @@ class ReaderPage extends StatelessWidget {
                           context,
                           MaterialPageRoute(
                             builder: (context) => ReaderPage(
-                              link: folderImages[index],
+                              link: folderImages[index].fullUrl,
                               images: folderImages,
                             ),
                           ),
@@ -178,10 +180,11 @@ class ReaderPage extends StatelessWidget {
                                 top: Radius.circular(12),
                               ),
                             ),
-                            child: const Icon(
-                              Icons.image,
-                              color: Colors.white54,
-                              size: 48,
+                            child: Image.network(
+                              folderImages[index].thumbnailUrl,
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              height: double.infinity,
                             ),
                           ),
                         ),
@@ -279,7 +282,7 @@ String? extractDriveFolderId(String link) {
   return match.group(1);
 }
 
-Future<List<String>> fetchDriveFolderImages(String folderId) async {
+Future<List<DriveImage>> fetchDriveFolderImages(String folderId) async {
   final response = await http.get(
     Uri.parse(
       'https://www.googleapis.com/drive/v3/files?q=%27$folderId%27+in+parents&fields=files(id,name,mimeType,thumbnailLink)&key=AIzaSyAHIpqx856jNpz9nrD7BBwakLkTY89cHnc',
@@ -297,15 +300,22 @@ Future<List<String>> fetchDriveFolderImages(String folderId) async {
 
   return files
       .where((file) => file['mimeType'].toString().startsWith('image/'))
-      .map<String>((file) {
+      .map<DriveImage>((file) {
     final thumbnail = file['thumbnailLink'] as String?;
-
-    if (thumbnail != null && thumbnail.isNotEmpty) {
-      return thumbnail.replaceAll(RegExp(r'=s\d+'), '=s1600');
-    }
-
     final id = file['id'];
-    return 'https://drive.google.com/uc?export=view&id=$id';
+
+    final fullUrl =
+        'https://drive.google.com/uc?export=view&id=$id';
+
+    final thumbnailUrl =
+    thumbnail != null && thumbnail.isNotEmpty
+        ? thumbnail.replaceAll(RegExp(r'=s\d+'), '=s400')
+        : fullUrl;
+
+    return DriveImage(
+      thumbnailUrl: thumbnailUrl,
+      fullUrl: fullUrl,
+    );
   })
       .toList();
 }
