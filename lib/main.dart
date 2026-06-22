@@ -155,6 +155,23 @@ class _ReaderPageState extends State<ReaderPage> {
       initialPage: widget.initialIndex,
     );
 
+    void preloadImage(String url) {
+      precacheImage(
+        NetworkImage(url),
+        context,
+      );
+    }
+
+    void preloadAround(int index) {
+      if (index > 0) {
+        preloadImage(folderImages[index - 1].fullUrl);
+      }
+
+      if (index < folderImages.length - 1) {
+        preloadImage(folderImages[index + 1].fullUrl);
+      }
+    }
+
     return Scaffold(
       body: Stack(
         children: [
@@ -222,6 +239,8 @@ class _ReaderPageState extends State<ReaderPage> {
                     controller: pageController,
                     itemCount: folderImages.length,
                     itemBuilder: (context, pageIndex) {
+                      preloadAround(pageIndex);
+
                       final currentImage = folderImages[pageIndex];
                       return InteractiveViewer(
 
