@@ -73,7 +73,7 @@ const List<StorySourceDefinition> storySourceDefinitions = [
   StorySourceDefinition(
     type: StorySourceType.nHentaiGallery,
     label: 'NHentai',
-    hintText: 'Adapter planned',
+    hintText: 'Paste NHentai gallery link',
     icon: Icons.lock_outline_rounded,
     status: StorySourceStatus.planned,
     privateSource: true,
@@ -81,7 +81,7 @@ const List<StorySourceDefinition> storySourceDefinitions = [
   StorySourceDefinition(
     type: StorySourceType.hitomiGallery,
     label: 'Hitomi',
-    hintText: 'Adapter planned',
+    hintText: 'Paste Hitomi gallery link',
     icon: Icons.lock_outline_rounded,
     status: StorySourceStatus.planned,
     privateSource: true,
@@ -599,6 +599,8 @@ class KevDexMemory {
   static const String _lastLinkKey = 'kevdex.lastLink';
   static const String _lastDriveLinkKey = 'kevdex.lastDriveLink';
   static const String _lastMangaDexLinkKey = 'kevdex.lastMangaDexLink';
+  static const String _lastNHentaiLinkKey = 'kevdex.lastNHentaiLink';
+  static const String _lastHitomiLinkKey = 'kevdex.lastHitomiLink';
   static const String _readerProgressKey = 'kevdex.readerProgress';
   static const String _libraryKey = 'kevdex.library';
   static const String _uiBackgroundKey = 'kevdex.uiBackground';
@@ -611,6 +613,8 @@ class KevDexMemory {
   static String? lastLink;
   static String? lastDriveLink;
   static String? lastMangaDexLink;
+  static String? lastNHentaiLink;
+  static String? lastHitomiLink;
 
   const KevDexMemory._();
 
@@ -619,6 +623,8 @@ class KevDexMemory {
     lastLink = preferences.getString(_lastLinkKey);
     lastDriveLink = preferences.getString(_lastDriveLinkKey);
     lastMangaDexLink = preferences.getString(_lastMangaDexLinkKey);
+    lastNHentaiLink = preferences.getString(_lastNHentaiLinkKey);
+    lastHitomiLink = preferences.getString(_lastHitomiLinkKey);
     _restoreReadingProgress(preferences);
     _restoreLibrary(preferences);
     _restoreUiBackground(preferences);
@@ -666,6 +672,34 @@ class KevDexMemory {
 
     lastMangaDexLink = cleanedLink;
     await preferences.setString(_lastMangaDexLinkKey, cleanedLink);
+  }
+
+  static Future<void> saveLastNHentaiLink(String link) async {
+    final cleanedLink = link.trim();
+    final preferences = await _loadPreferences();
+
+    if (cleanedLink.isEmpty) {
+      await preferences.remove(_lastNHentaiLinkKey);
+      lastNHentaiLink = null;
+      return;
+    }
+
+    lastNHentaiLink = cleanedLink;
+    await preferences.setString(_lastNHentaiLinkKey, cleanedLink);
+  }
+
+  static Future<void> saveLastHitomiLink(String link) async {
+    final cleanedLink = link.trim();
+    final preferences = await _loadPreferences();
+
+    if (cleanedLink.isEmpty) {
+      await preferences.remove(_lastHitomiLinkKey);
+      lastHitomiLink = null;
+      return;
+    }
+
+    lastHitomiLink = cleanedLink;
+    await preferences.setString(_lastHitomiLinkKey, cleanedLink);
   }
 
   static Future<void> saveReadingProgress(ReadingProgress progress) async {
@@ -756,6 +790,8 @@ class KevDexMemory {
       preferences.remove(_lastLinkKey),
       preferences.remove(_lastDriveLinkKey),
       preferences.remove(_lastMangaDexLinkKey),
+      preferences.remove(_lastNHentaiLinkKey),
+      preferences.remove(_lastHitomiLinkKey),
       preferences.remove(_readerProgressKey),
       preferences.remove(_libraryKey),
       preferences.remove(_uiBackgroundKey),
@@ -766,6 +802,8 @@ class KevDexMemory {
     lastLink = null;
     lastDriveLink = null;
     lastMangaDexLink = null;
+    lastNHentaiLink = null;
+    lastHitomiLink = null;
     readingProgressNotifier.value = null;
     libraryNotifier.value = const <LibraryItem>[];
     uiBackgroundNotifier.value = defaultUiBackground;
@@ -1046,6 +1084,8 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final TextEditingController driveLinkController = TextEditingController();
   final TextEditingController mangaDexLinkController = TextEditingController();
+  final TextEditingController nHentaiLinkController = TextEditingController();
+  final TextEditingController hitomiLinkController = TextEditingController();
   StorySourceType selectedSourceType = StorySourceType.driveFolder;
   bool isOpening = false;
 
@@ -1054,6 +1094,8 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     final savedDriveLink = KevDexMemory.lastDriveLink;
     final savedMangaDexLink = KevDexMemory.lastMangaDexLink;
+    final savedNHentaiLink = KevDexMemory.lastNHentaiLink;
+    final savedHitomiLink = KevDexMemory.lastHitomiLink;
     final fallbackLink = KevDexMemory.lastLink;
 
     if (savedDriveLink != null && savedDriveLink.isNotEmpty) {
@@ -1073,29 +1115,47 @@ class _HomePageState extends State<HomePage> {
       mangaDexLinkController.text = fallbackLink;
       selectedSourceType = StorySourceType.mangaDexChapter;
     }
+
+    if (savedNHentaiLink != null && savedNHentaiLink.isNotEmpty) {
+      nHentaiLinkController.text = savedNHentaiLink;
+    }
+
+    if (savedHitomiLink != null && savedHitomiLink.isNotEmpty) {
+      hitomiLinkController.text = savedHitomiLink;
+    }
   }
 
   @override
   void dispose() {
     driveLinkController.dispose();
     mangaDexLinkController.dispose();
+    nHentaiLinkController.dispose();
+    hitomiLinkController.dispose();
     super.dispose();
   }
 
   TextEditingController _controllerForSource(StorySourceType sourceType) {
     return switch (sourceType) {
       StorySourceType.mangaDexChapter => mangaDexLinkController,
+      StorySourceType.nHentaiGallery => nHentaiLinkController,
+      StorySourceType.hitomiGallery => hitomiLinkController,
       StorySourceType.driveFolder ||
-      StorySourceType.singlePage ||
-      StorySourceType.nHentaiGallery ||
-      StorySourceType.hitomiGallery => driveLinkController,
+      StorySourceType.singlePage => driveLinkController,
     };
   }
 
   void _selectSource(StorySourceType sourceType) {
     final definition = sourceDefinitionFor(sourceType);
 
-    if (!definition.isReady) {
+    if (definition.privateSource &&
+        !privateSourceSettingsNotifier.value.isAccepted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enable Private Sources first.')),
+      );
+      return;
+    }
+
+    if (!definition.isReady && !definition.privateSource) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${definition.label} adapter is planned.')),
       );
@@ -1129,6 +1189,8 @@ class _HomePageState extends State<HomePage> {
 
     driveLinkController.clear();
     mangaDexLinkController.clear();
+    nHentaiLinkController.clear();
+    hitomiLinkController.clear();
 
     if (!mounted) {
       return;
@@ -1146,9 +1208,10 @@ class _HomePageState extends State<HomePage> {
 
     final definition = sourceDefinitionFor(requestedSourceType);
 
-    if (!definition.isReady) {
+    if (definition.privateSource &&
+        !privateSourceSettingsNotifier.value.isAccepted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${definition.label} adapter is planned.')),
+        const SnackBar(content: Text('Enable Private Sources first.')),
       );
       return;
     }
@@ -1158,6 +1221,36 @@ class _HomePageState extends State<HomePage> {
     if (link.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Paste a ${definition.label} link first.')),
+      );
+      return;
+    }
+
+    if (!definition.isReady) {
+      if (!_matchesRequestedPrivateSource(requestedSourceType, link)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Paste a valid ${definition.label} link.')),
+        );
+        return;
+      }
+
+      await KevDexMemory.saveLastLink(link);
+      if (requestedSourceType == StorySourceType.nHentaiGallery) {
+        await KevDexMemory.saveLastNHentaiLink(link);
+      } else if (requestedSourceType == StorySourceType.hitomiGallery) {
+        await KevDexMemory.saveLastHitomiLink(link);
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      final messenger = ScaffoldMessenger.of(context)..hideCurrentSnackBar();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            '${definition.label} link saved. Reader adapter is next.',
+          ),
+        ),
       );
       return;
     }
@@ -1178,6 +1271,17 @@ class _HomePageState extends State<HomePage> {
         mangaDexChapterId != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Use the MangaDex box for this link.')),
+      );
+      return;
+    }
+
+    if (isPrivateSourceType(sourceType) && requestedSourceType != sourceType) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Use the ${sourceDefinitionFor(sourceType).label} box.',
+          ),
+        ),
       );
       return;
     }
@@ -1313,6 +1417,8 @@ class _HomePageState extends State<HomePage> {
                       selectedSourceType: selectedSourceType,
                       driveController: driveLinkController,
                       mangaDexController: mangaDexLinkController,
+                      nHentaiController: nHentaiLinkController,
+                      hitomiController: hitomiLinkController,
                       isOpening: isOpening,
                       onSelectSource: _selectSource,
                       onShowSourceHub: _showSourceHub,
@@ -1784,6 +1890,8 @@ class _SourceHubPanel extends StatelessWidget {
   final StorySourceType selectedSourceType;
   final TextEditingController driveController;
   final TextEditingController mangaDexController;
+  final TextEditingController nHentaiController;
+  final TextEditingController hitomiController;
   final bool isOpening;
   final ValueChanged<StorySourceType> onSelectSource;
   final VoidCallback onShowSourceHub;
@@ -1794,6 +1902,8 @@ class _SourceHubPanel extends StatelessWidget {
     required this.selectedSourceType,
     required this.driveController,
     required this.mangaDexController,
+    required this.nHentaiController,
+    required this.hitomiController,
     required this.isOpening,
     required this.onSelectSource,
     required this.onShowSourceHub,
@@ -1804,10 +1914,7 @@ class _SourceHubPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final selectedDefinition = sourceDefinitionFor(selectedSourceType);
-    final selectedController =
-        selectedSourceType == StorySourceType.mangaDexChapter
-        ? mangaDexController
-        : driveController;
+    final selectedController = _controllerForSource(selectedSourceType);
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -1847,29 +1954,69 @@ class _SourceHubPanel extends StatelessWidget {
             runSpacing: 8,
             children: [
               for (final definition in readyStorySources)
-                FilterChip(
+                _SourceFilterChip(
+                  definition: definition,
                   selected: selectedSourceType == definition.type,
-                  label: Text(definition.label),
-                  avatar: Icon(definition.icon, size: 17),
-                  onSelected: isOpening
-                      ? null
-                      : (_) {
-                          onSelectSource(definition.type);
-                        },
-                  backgroundColor: _fieldColor,
-                  selectedColor: _primaryAccent,
-                  checkmarkColor: const Color(0xFF101016),
-                  side: const BorderSide(color: Color(0xFF393745)),
-                  labelStyle: TextStyle(
-                    color: selectedSourceType == definition.type
-                        ? const Color(0xFF101016)
-                        : _mutedText,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                  ),
+                  isOpening: isOpening,
+                  onSelectSource: onSelectSource,
                 ),
+              ValueListenableBuilder<PrivateSourceSettings>(
+                valueListenable: privateSourceSettingsNotifier,
+                builder: (context, settings, child) {
+                  if (!settings.isAccepted) {
+                    return const SizedBox.shrink();
+                  }
+
+                  return Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final definition in plannedStorySources.where(
+                        (definition) => definition.privateSource,
+                      ))
+                        _SourceFilterChip(
+                          definition: definition,
+                          selected: selectedSourceType == definition.type,
+                          isOpening: isOpening,
+                          onSelectSource: onSelectSource,
+                        ),
+                    ],
+                  );
+                },
+              ),
             ],
           ),
+          if (!selectedDefinition.isReady) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF241D24),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFF4B3E4A)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.construction_rounded,
+                    color: _secondaryAccent,
+                    size: 17,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${selectedDefinition.label} reader is staged for the next adapter build.',
+                      style: const TextStyle(
+                        color: _mutedText,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 14),
           _SourceLinkField(
             label: selectedDefinition.label,
@@ -1882,6 +2029,49 @@ class _SourceHubPanel extends StatelessWidget {
             onClear: onClear,
           ),
         ],
+      ),
+    );
+  }
+
+  TextEditingController _controllerForSource(StorySourceType sourceType) {
+    return switch (sourceType) {
+      StorySourceType.mangaDexChapter => mangaDexController,
+      StorySourceType.nHentaiGallery => nHentaiController,
+      StorySourceType.hitomiGallery => hitomiController,
+      StorySourceType.driveFolder ||
+      StorySourceType.singlePage => driveController,
+    };
+  }
+}
+
+class _SourceFilterChip extends StatelessWidget {
+  final StorySourceDefinition definition;
+  final bool selected;
+  final bool isOpening;
+  final ValueChanged<StorySourceType> onSelectSource;
+
+  const _SourceFilterChip({
+    required this.definition,
+    required this.selected,
+    required this.isOpening,
+    required this.onSelectSource,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return FilterChip(
+      selected: selected,
+      label: Text(definition.label),
+      avatar: Icon(definition.icon, size: 17),
+      onSelected: isOpening ? null : (_) => onSelectSource(definition.type),
+      backgroundColor: _fieldColor,
+      selectedColor: _primaryAccent,
+      checkmarkColor: const Color(0xFF101016),
+      side: const BorderSide(color: Color(0xFF393745)),
+      labelStyle: TextStyle(
+        color: selected ? const Color(0xFF101016) : _mutedText,
+        fontSize: 12,
+        fontWeight: FontWeight.w800,
       ),
     );
   }
@@ -2141,9 +2331,11 @@ class _SourceHubSheet extends StatelessWidget {
                           for (final definition in visiblePlannedSources) ...[
                             _SourceHubTile(
                               definition: definition,
-                              selected: false,
-                              enabled: false,
-                              onTap: () {},
+                              selected: selectedSourceType == definition.type,
+                              enabled:
+                                  definition.privateSource &&
+                                  settings.isAccepted,
+                              onTap: () => onSelectSource(definition.type),
                             ),
                             if (definition != visiblePlannedSources.last)
                               const SizedBox(height: 10),
@@ -2305,9 +2497,13 @@ class _SourceHubTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final foregroundColor = enabled ? Colors.white : _mutedText;
-    final statusLabel = enabled
-        ? (selected ? 'Selected' : 'Ready')
-        : (definition.privateSource ? 'Private' : 'Soon');
+    final statusLabel = selected
+        ? 'Selected'
+        : definition.isReady
+        ? 'Ready'
+        : definition.privateSource
+        ? 'Staged'
+        : 'Soon';
 
     return Material(
       color: Colors.transparent,
@@ -3885,6 +4081,14 @@ bool isMangaDexChapterLink(String link) {
 }
 
 StorySourceType detectStorySource(String link) {
+  if (extractNHentaiGalleryId(link) != null) {
+    return StorySourceType.nHentaiGallery;
+  }
+
+  if (extractHitomiGalleryId(link) != null) {
+    return StorySourceType.hitomiGallery;
+  }
+
   if (extractMangaDexChapterId(link) != null) {
     return StorySourceType.mangaDexChapter;
   }
@@ -3894,6 +4098,19 @@ StorySourceType detectStorySource(String link) {
   }
 
   return StorySourceType.singlePage;
+}
+
+bool _matchesRequestedPrivateSource(
+  StorySourceType requestedSourceType,
+  String link,
+) {
+  return switch (requestedSourceType) {
+    StorySourceType.nHentaiGallery => extractNHentaiGalleryId(link) != null,
+    StorySourceType.hitomiGallery => extractHitomiGalleryId(link) != null,
+    StorySourceType.driveFolder ||
+    StorySourceType.mangaDexChapter ||
+    StorySourceType.singlePage => true,
+  };
 }
 
 String? extractDriveFolderId(String link) {
@@ -3925,6 +4142,66 @@ String? extractMangaDexChapterId(String link) {
   ).firstMatch(link.trim());
 
   return directIdMatch?.group(0);
+}
+
+String? extractNHentaiGalleryId(String link) {
+  final cleanedLink = link.trim();
+  final directIdMatch = RegExp(
+    r'^(?:nhentai:)?(\d{2,})$',
+  ).firstMatch(cleanedLink);
+
+  if (directIdMatch != null) {
+    return directIdMatch.group(1);
+  }
+
+  final uri = Uri.tryParse(cleanedLink);
+  final host = uri?.host.toLowerCase() ?? '';
+
+  if (!host.contains('nhentai')) {
+    return null;
+  }
+
+  final pathSegments = uri?.pathSegments ?? const <String>[];
+
+  for (var index = 0; index < pathSegments.length - 1; index++) {
+    if (pathSegments[index].toLowerCase() != 'g') {
+      continue;
+    }
+
+    final galleryId = RegExp(r'^\d+$').firstMatch(pathSegments[index + 1]);
+
+    if (galleryId != null) {
+      return galleryId.group(0);
+    }
+  }
+
+  return null;
+}
+
+String? extractHitomiGalleryId(String link) {
+  final cleanedLink = link.trim();
+  final directIdMatch = RegExp(r'^hitomi:(\d{2,})$').firstMatch(cleanedLink);
+
+  if (directIdMatch != null) {
+    return directIdMatch.group(1);
+  }
+
+  final uri = Uri.tryParse(cleanedLink);
+  final host = uri?.host.toLowerCase() ?? '';
+
+  if (!host.contains('hitomi.')) {
+    return null;
+  }
+
+  final lastPathSegment = uri?.pathSegments.isEmpty ?? true
+      ? ''
+      : uri!.pathSegments.last;
+  final galleryIdMatch = RegExp(
+    r'(\d+)\.html$',
+    caseSensitive: false,
+  ).firstMatch(lastPathSegment);
+
+  return galleryIdMatch?.group(1);
 }
 
 Future<String?> fetchDriveFolderName(String folderId) async {

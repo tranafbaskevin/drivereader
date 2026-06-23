@@ -23,6 +23,25 @@ void main() {
     expect(detectStorySource(chapterId), StorySourceType.mangaDexChapter);
   });
 
+  test('Private source links are detected', () {
+    expect(extractNHentaiGalleryId('https://nhentai.xxx/g/123456/'), '123456');
+    expect(extractNHentaiGalleryId('nhentai:987654'), '987654');
+    expect(
+      detectStorySource('https://nhentai.net/g/123456/'),
+      StorySourceType.nHentaiGallery,
+    );
+
+    expect(
+      extractHitomiGalleryId('https://hitomi.la/reader/7654321.html#1'),
+      '7654321',
+    );
+    expect(extractHitomiGalleryId('hitomi:112233'), '112233');
+    expect(
+      detectStorySource('https://hitomi.la/galleries/7654321.html'),
+      StorySourceType.hitomiGallery,
+    );
+  });
+
   testWidgets('Home screen shows KevDex identity', (WidgetTester tester) async {
     readingProgressNotifier.value = null;
     libraryNotifier.value = const <LibraryItem>[];
@@ -94,9 +113,48 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Planned'), findsOneWidget);
-    expect(find.text('NHentai'), findsOneWidget);
-    expect(find.text('Hitomi'), findsOneWidget);
+    expect(find.text('NHentai'), findsWidgets);
+    expect(find.text('Hitomi'), findsWidgets);
     expect(find.byTooltip('Clear private history'), findsOneWidget);
+
+    resetKevDexTestState();
+  });
+
+  testWidgets('Home can stage private source links without opening reader', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    resetKevDexTestState();
+
+    await tester.pumpWidget(const DriveReaderApp());
+
+    await tester.tap(find.byTooltip('Manage sources'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Toggle private sources'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Enable'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('NHentai').last);
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Open NHentai'), findsOneWidget);
+    expect(
+      find.text('NHentai reader is staged for the next adapter build.'),
+      findsOneWidget,
+    );
+
+    await tester.enterText(
+      find.byType(TextField),
+      'https://nhentai.xxx/g/123456/',
+    );
+    await tester.ensureVisible(find.byTooltip('Open NHentai'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.arrow_forward_rounded));
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(KevDexMemory.lastNHentaiLink, 'https://nhentai.xxx/g/123456/');
+    expect(KevDexMemory.lastLink, 'https://nhentai.xxx/g/123456/');
+    expect(find.byType(ReaderPage), findsNothing);
 
     resetKevDexTestState();
   });
@@ -104,14 +162,13 @@ void main() {
   testWidgets('Source Hub confirms before clearing cache', (
     WidgetTester tester,
   ) async {
-    readingProgressNotifier.value = null;
-    libraryNotifier.value = const <LibraryItem>[];
-    uiBackgroundNotifier.value = defaultUiBackground;
-    readerComfortNotifier.value = defaultReaderComfortSettings;
+    resetKevDexTestState();
 
     await tester.pumpWidget(const DriveReaderApp());
 
     await tester.tap(find.byTooltip('Manage sources'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byTooltip('Clear app cache'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Clear app cache'));
     await tester.pumpAndSettle();
