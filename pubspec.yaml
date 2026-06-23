@@ -35,6 +35,8 @@ dependencies:
 
   http: ^1.2.1
 
+  image_picker: ^1.1.2
+
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
@@ -63,6 +65,9 @@ flutter:
 
   assets:
     - assets/images/kevdex_anime_library_bg.png
+    - assets/images/kevdex_bg_manga_hallway.png
+    - assets/images/kevdex_bg_manga_eye.png
+    - assets/images/kevdex_bg_manga_shadow.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:

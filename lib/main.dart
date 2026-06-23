@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 
 const Color _appBackground = Color(0xFF101016);
 const Color _surfaceColor = Color(0xFF1A1A22);
@@ -11,7 +13,13 @@ const Color _glassSurfaceColor = Color(0xE61A1A22);
 const Color _primaryAccent = Color(0xFF9BE7C9);
 const Color _secondaryAccent = Color(0xFFFFB86B);
 const Color _mutedText = Color(0xFFB7B6C6);
-const String _homeBackgroundAsset = 'assets/images/kevdex_anime_library_bg.png';
+const String _defaultBackgroundAsset =
+    'assets/images/kevdex_anime_library_bg.png';
+const String _hallwayBackgroundAsset =
+    'assets/images/kevdex_bg_manga_hallway.png';
+const String _eyeBackgroundAsset = 'assets/images/kevdex_bg_manga_eye.png';
+const String _shadowBackgroundAsset =
+    'assets/images/kevdex_bg_manga_shadow.png';
 
 Color _backgroundOverlay(double opacity) {
   final alpha = (opacity.clamp(0.0, 1.0) * 255).round();
@@ -56,8 +64,35 @@ class ReadingProgress {
   }
 }
 
+class UiBackground {
+  final String title;
+  final String path;
+  final bool isAsset;
+
+  const UiBackground.asset({required this.title, required this.path})
+    : isAsset = true;
+
+  const UiBackground.file({required this.title, required this.path})
+    : isAsset = false;
+}
+
+const UiBackground defaultUiBackground = UiBackground.asset(
+  title: 'KevDex Library',
+  path: _defaultBackgroundAsset,
+);
+
+const List<UiBackground> _presetUiBackgrounds = [
+  defaultUiBackground,
+  UiBackground.asset(title: 'Hallway', path: _hallwayBackgroundAsset),
+  UiBackground.asset(title: 'Midnight Eye', path: _eyeBackgroundAsset),
+  UiBackground.asset(title: 'Shadow Reader', path: _shadowBackgroundAsset),
+];
+
 final ValueNotifier<ReadingProgress?> readingProgressNotifier =
     ValueNotifier<ReadingProgress?>(null);
+
+final ValueNotifier<UiBackground> uiBackgroundNotifier =
+    ValueNotifier<UiBackground>(defaultUiBackground);
 
 class DriveReaderApp extends StatelessWidget {
   const DriveReaderApp({super.key});
@@ -182,6 +217,16 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  void _showBackgroundPicker() {
+    showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const _BackgroundPickerSheet(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -195,6 +240,13 @@ class _HomePageState extends State<HomePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: _BackgroundPickerButton(
+                        onPressed: _showBackgroundPicker,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     const _KevDexHeader(),
                     const SizedBox(height: 28),
                     ValueListenableBuilder<ReadingProgress?>(
@@ -287,29 +339,290 @@ class _KevDexBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        Image.asset(
-          _homeBackgroundAsset,
+    return ValueListenableBuilder<UiBackground>(
+      valueListenable: uiBackgroundNotifier,
+      child: child,
+      builder: (context, background, foreground) {
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            _BackgroundImage(background: background),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    _backgroundOverlay(overlayOpacity * 0.72),
+                    _backgroundOverlay(overlayOpacity),
+                    _backgroundOverlay(overlayOpacity * 0.92),
+                  ],
+                ),
+              ),
+            ),
+            foreground!,
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _BackgroundImage extends StatelessWidget {
+  final UiBackground background;
+
+  const _BackgroundImage({required this.background});
+
+  @override
+  Widget build(BuildContext context) {
+    if (background.isAsset) {
+      return Image.asset(
+        background.path,
+        fit: BoxFit.cover,
+        alignment: Alignment.center,
+      );
+    }
+
+    return Image.file(
+      File(background.path),
+      fit: BoxFit.cover,
+      alignment: Alignment.center,
+      errorBuilder: (context, error, stackTrace) {
+        return Image.asset(
+          _defaultBackgroundAsset,
           fit: BoxFit.cover,
           alignment: Alignment.center,
-        ),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                _backgroundOverlay(overlayOpacity * 0.72),
-                _backgroundOverlay(overlayOpacity),
-                _backgroundOverlay(overlayOpacity * 0.92),
-              ],
+        );
+      },
+    );
+  }
+}
+
+class _BackgroundPickerButton extends StatelessWidget {
+  final VoidCallback onPressed;
+
+  const _BackgroundPickerButton({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton.filledTonal(
+      tooltip: 'Change UI background',
+      onPressed: onPressed,
+      icon: const Icon(Icons.wallpaper_rounded),
+      style: IconButton.styleFrom(
+        backgroundColor: _glassSurfaceColor,
+        foregroundColor: _primaryAccent,
+        side: const BorderSide(color: Color(0xFF2F2D39)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
+}
+
+class _BackgroundPickerSheet extends StatelessWidget {
+  const _BackgroundPickerSheet();
+
+  Future<void> _pickUserImage(BuildContext context) async {
+    final image = await ImagePicker().pickImage(source: ImageSource.gallery);
+
+    if (image == null || !context.mounted) {
+      return;
+    }
+
+    uiBackgroundNotifier.value = UiBackground.file(
+      title: 'My Image',
+      path: image.path,
+    );
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.paddingOf(context).bottom;
+
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: Container(
+        width: double.infinity,
+        constraints: const BoxConstraints(maxWidth: 520),
+        margin: const EdgeInsets.all(12),
+        padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + bottomPadding),
+        decoration: BoxDecoration(
+          color: const Color(0xF01A1A22),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFF2F2D39)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x88000000),
+              blurRadius: 28,
+              offset: Offset(0, 16),
             ),
+          ],
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.wallpaper_rounded, color: _primaryAccent),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'UI Background',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Close',
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final tileWidth = (constraints.maxWidth - 12) / 2;
+
+                  return Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      for (final background in _presetUiBackgrounds)
+                        SizedBox(
+                          width: tileWidth,
+                          child: _BackgroundPresetTile(background: background),
+                        ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                height: 48,
+                child: OutlinedButton.icon(
+                  onPressed: () => _pickUserImage(context),
+                  icon: const Icon(Icons.photo_library_rounded),
+                  label: const Text('Use My Image'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _primaryAccent,
+                    side: const BorderSide(color: _primaryAccent),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    textStyle: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: () {
+                  uiBackgroundNotifier.value = defaultUiBackground;
+                  Navigator.pop(context);
+                },
+                icon: const Icon(Icons.restart_alt_rounded),
+                label: const Text('Reset to KevDex Library'),
+                style: TextButton.styleFrom(
+                  foregroundColor: _mutedText,
+                  textStyle: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
           ),
         ),
-        child,
-      ],
+      ),
+    );
+  }
+}
+
+class _BackgroundPresetTile extends StatelessWidget {
+  final UiBackground background;
+
+  const _BackgroundPresetTile({required this.background});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<UiBackground>(
+      valueListenable: uiBackgroundNotifier,
+      builder: (context, selectedBackground, child) {
+        final isSelected =
+            selectedBackground.isAsset == background.isAsset &&
+            selectedBackground.path == background.path;
+
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              uiBackgroundNotifier.value = background;
+              Navigator.pop(context);
+            },
+            borderRadius: BorderRadius.circular(8),
+            child: Ink(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: isSelected ? _primaryAccent : const Color(0xFF2F2D39),
+                  width: isSelected ? 1.6 : 1,
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(7),
+                child: AspectRatio(
+                  aspectRatio: 1.12,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Image.asset(background.path, fit: BoxFit.cover),
+                      const DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Colors.transparent, Color(0xCC000000)],
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        left: 10,
+                        right: 10,
+                        bottom: 9,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                background.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                            if (isSelected)
+                              const Icon(
+                                Icons.check_circle_rounded,
+                                color: _primaryAccent,
+                                size: 18,
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

@@ -6,6 +6,7 @@ import 'package:drivereader/main.dart';
 void main() {
   testWidgets('Home screen shows KevDex identity', (WidgetTester tester) async {
     readingProgressNotifier.value = null;
+    uiBackgroundNotifier.value = defaultUiBackground;
 
     await tester.pumpWidget(const DriveReaderApp());
 
@@ -23,6 +24,7 @@ void main() {
       images: [],
       pageIndex: 0,
     );
+    uiBackgroundNotifier.value = defaultUiBackground;
 
     await tester.pumpWidget(const DriveReaderApp());
 
@@ -30,12 +32,14 @@ void main() {
     expect(find.text('Page 1 / 1'), findsOneWidget);
 
     readingProgressNotifier.value = null;
+    uiBackgroundNotifier.value = defaultUiBackground;
   });
 
   testWidgets('Reader empty state uses manga-friendly copy', (
     WidgetTester tester,
   ) async {
     readingProgressNotifier.value = null;
+    uiBackgroundNotifier.value = defaultUiBackground;
 
     await tester.pumpWidget(
       const MaterialApp(
