@@ -523,6 +523,7 @@ class ReaderComfortSettings {
 
 const ReaderComfortSettings defaultReaderComfortSettings =
     ReaderComfortSettings(fitMode: ReaderFitMode.fitWidth, shade: 0);
+const int _maxLibraryItems = 10;
 
 final ValueNotifier<ReadingProgress?> readingProgressNotifier =
     ValueNotifier<ReadingProgress?>(null);
@@ -622,7 +623,7 @@ class KevDexMemory {
     ];
 
     libraryNotifier.value = List<LibraryItem>.unmodifiable(
-      nextItems.take(8).toList(growable: false),
+      nextItems.take(_maxLibraryItems).toList(growable: false),
     );
     await preferences.setString(_libraryKey, jsonEncode(libraryNotifier.value));
   }
@@ -1035,20 +1036,13 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _openLibraryItem(LibraryItem item) {
-    final progress = item.toProgress();
-    readingProgressNotifier.value = progress;
+    openLibraryItem(context, item);
+  }
 
+  void _openLibraryPage() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => ReaderPage(
-          link: item.sourceLink,
-          images: item.images,
-          initialIndex: item.pageIndex,
-          startInGallery: false,
-          metadata: item.metadata,
-        ),
-      ),
+      MaterialPageRoute(builder: (context) => const LibraryPage()),
     );
   }
 
@@ -1135,6 +1129,7 @@ class _HomePageState extends State<HomePage> {
                           child: _LibraryShelf(
                             items: items,
                             onOpen: _openLibraryItem,
+                            onOpenAll: _openLibraryPage,
                           ),
                         );
                       },
@@ -2034,50 +2029,191 @@ class _ContinueReadingCard extends StatelessWidget {
   }
 }
 
-class _LibraryShelf extends StatelessWidget {
-  final List<LibraryItem> items;
-  final ValueChanged<LibraryItem> onOpen;
+void openLibraryItem(BuildContext context, LibraryItem item) {
+  final progress = item.toProgress();
+  readingProgressNotifier.value = progress;
 
-  const _LibraryShelf({required this.items, required this.onOpen});
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => ReaderPage(
+        link: item.sourceLink,
+        images: item.images,
+        initialIndex: item.pageIndex,
+        startInGallery: false,
+        metadata: item.metadata,
+      ),
+    ),
+  );
+}
+
+class LibraryPage extends StatelessWidget {
+  const LibraryPage({super.key});
 
   @override
   Widget build(BuildContext context) {
+    return Scaffold(
+      body: ValueListenableBuilder<List<LibraryItem>>(
+        valueListenable: libraryNotifier,
+        builder: (context, items, child) {
+          return _KevDexBackground(
+            overlayOpacity: 0.82,
+            child: SafeArea(
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 10, 16, 12),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          tooltip: 'Back',
+                          icon: const Icon(Icons.arrow_back_rounded),
+                          color: Colors.white,
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                        const SizedBox(width: 4),
+                        const Expanded(
+                          child: Text(
+                            'Library',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _glassSurfaceColor,
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: const Color(0xFF2F2D39)),
+                          ),
+                          child: Text(
+                            '${items.length} saved',
+                            style: const TextStyle(
+                              color: _mutedText,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: items.isEmpty
+                        ? const _ReaderMessageState(
+                            icon: Icons.local_library_rounded,
+                            title: 'Library is empty.',
+                            message: 'Opened stories will appear here.',
+                          )
+                        : ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                            itemCount: items.length,
+                            separatorBuilder: (context, index) =>
+                                const SizedBox(height: 10),
+                            itemBuilder: (context, index) {
+                              final item = items[index];
+
+                              return _LibraryItemCard(
+                                item: item,
+                                onOpen: () => openLibraryItem(context, item),
+                                onRemove: () => unawaited(
+                                  KevDexMemory.removeLibraryItem(
+                                    item.sourceLink,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _LibraryShelf extends StatelessWidget {
+  final List<LibraryItem> items;
+  final ValueChanged<LibraryItem> onOpen;
+  final VoidCallback onOpenAll;
+
+  const _LibraryShelf({
+    required this.items,
+    required this.onOpen,
+    required this.onOpenAll,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final previewItems = items.take(3).toList(growable: false);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            const Icon(Icons.local_library_rounded, color: _primaryAccent),
-            const SizedBox(width: 8),
-            const Expanded(
-              child: Text(
-                'Library',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
+        Tooltip(
+          message: 'Open full Library',
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onOpenAll,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.local_library_rounded,
+                      color: _primaryAccent,
+                    ),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Library',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '${items.length} saved',
+                      style: const TextStyle(
+                        color: _mutedText,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: _mutedText,
+                      size: 20,
+                    ),
+                  ],
                 ),
               ),
             ),
-            Text(
-              '${items.length} saved',
-              style: const TextStyle(
-                color: _mutedText,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
+          ),
         ),
         const SizedBox(height: 10),
-        for (final item in items.take(3)) ...[
+        for (final item in previewItems) ...[
           _LibraryItemCard(
             item: item,
             onOpen: () => onOpen(item),
             onRemove: () =>
                 unawaited(KevDexMemory.removeLibraryItem(item.sourceLink)),
           ),
-          if (item != items.take(3).last) const SizedBox(height: 10),
+          if (item != previewItems.last) const SizedBox(height: 10),
         ],
       ],
     );

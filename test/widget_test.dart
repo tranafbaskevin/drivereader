@@ -113,6 +113,44 @@ void main() {
     libraryNotifier.value = const <LibraryItem>[];
   });
 
+  testWidgets('Full Library page shows items outside home preview', (
+    WidgetTester tester,
+  ) async {
+    readingProgressNotifier.value = null;
+    libraryNotifier.value = List<LibraryItem>.unmodifiable(
+      List.generate(
+        4,
+        (index) => LibraryItem(
+          sourceLink: 'saved-library-link-$index',
+          images: const [],
+          pageIndex: 0,
+          updatedAtMs: index,
+          metadata: StoryMetadata(
+            sourceType: StorySourceType.singlePage,
+            title: 'Saved Story ${index + 1}',
+          ),
+        ),
+      ),
+    );
+    uiBackgroundNotifier.value = defaultUiBackground;
+    readerComfortNotifier.value = defaultReaderComfortSettings;
+
+    await tester.pumpWidget(const DriveReaderApp());
+
+    expect(find.text('Saved Story 1'), findsOneWidget);
+    expect(find.text('Saved Story 2'), findsOneWidget);
+    expect(find.text('Saved Story 3'), findsOneWidget);
+    expect(find.text('Saved Story 4'), findsNothing);
+
+    await tester.tap(find.byTooltip('Open full Library'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Saved Story 4'), findsOneWidget);
+    expect(find.text('4 saved'), findsOneWidget);
+
+    libraryNotifier.value = const <LibraryItem>[];
+  });
+
   testWidgets('Home screen labels MangaDex library items', (
     WidgetTester tester,
   ) async {
