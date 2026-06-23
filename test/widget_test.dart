@@ -1,7 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:drivereader/main.dart';
+
+void resetKevDexTestState() {
+  readingProgressNotifier.value = null;
+  libraryNotifier.value = const <LibraryItem>[];
+  uiBackgroundNotifier.value = defaultUiBackground;
+  readerComfortNotifier.value = defaultReaderComfortSettings;
+  privateSourceSettingsNotifier.value = defaultPrivateSourceSettings;
+}
 
 void main() {
   test('MangaDex chapter links are detected', () {
@@ -49,11 +58,10 @@ void main() {
     expect(find.byTooltip('Open Google Drive'), findsNothing);
   });
 
-  testWidgets('Source Hub shows planned adapters', (WidgetTester tester) async {
-    readingProgressNotifier.value = null;
-    libraryNotifier.value = const <LibraryItem>[];
-    uiBackgroundNotifier.value = defaultUiBackground;
-    readerComfortNotifier.value = defaultReaderComfortSettings;
+  testWidgets('Source Hub keeps private adapters hidden by default', (
+    WidgetTester tester,
+  ) async {
+    resetKevDexTestState();
 
     await tester.pumpWidget(const DriveReaderApp());
 
@@ -61,10 +69,36 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Ready'), findsWidgets);
+    expect(find.text('Private Sources'), findsOneWidget);
+    expect(find.text('NHentai'), findsNothing);
+    expect(find.text('Hitomi'), findsNothing);
+    expect(find.byTooltip('Clear app cache'), findsOneWidget);
+  });
+
+  testWidgets('Source Hub reveals private adapters after confirmation', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    resetKevDexTestState();
+
+    await tester.pumpWidget(const DriveReaderApp());
+
+    await tester.tap(find.byTooltip('Manage sources'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Toggle private sources'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Enable Private Sources?'), findsOneWidget);
+
+    await tester.tap(find.text('Enable'));
+    await tester.pumpAndSettle();
+
     expect(find.text('Planned'), findsOneWidget);
     expect(find.text('NHentai'), findsOneWidget);
     expect(find.text('Hitomi'), findsOneWidget);
-    expect(find.byTooltip('Clear app cache'), findsOneWidget);
+    expect(find.byTooltip('Clear private history'), findsOneWidget);
+
+    resetKevDexTestState();
   });
 
   testWidgets('Source Hub confirms before clearing cache', (
@@ -132,6 +166,31 @@ void main() {
     expect(find.text('Page 1 / 1'), findsOneWidget);
 
     libraryNotifier.value = const <LibraryItem>[];
+  });
+
+  testWidgets('Home screen covers private library thumbnails', (
+    WidgetTester tester,
+  ) async {
+    resetKevDexTestState();
+    libraryNotifier.value = const <LibraryItem>[
+      LibraryItem(
+        sourceLink: 'private-gallery-link',
+        images: [],
+        pageIndex: 0,
+        updatedAtMs: 1,
+        metadata: StoryMetadata(
+          sourceType: StorySourceType.nHentaiGallery,
+          title: 'Private Gallery',
+        ),
+      ),
+    ];
+
+    await tester.pumpWidget(const DriveReaderApp());
+
+    expect(find.text('Private Gallery'), findsOneWidget);
+    expect(find.byIcon(Icons.visibility_off_rounded), findsOneWidget);
+
+    resetKevDexTestState();
   });
 
   testWidgets('Full Library page shows items outside home preview', (

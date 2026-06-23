@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -106,6 +107,10 @@ List<StorySourceDefinition> get plannedStorySources {
       .toList(growable: false);
 }
 
+bool isPrivateSourceType(StorySourceType sourceType) {
+  return sourceDefinitionFor(sourceType).privateSource;
+}
+
 class StoryMetadata {
   final StorySourceType sourceType;
   final String title;
@@ -175,6 +180,44 @@ class StoryMetadata {
   }
 }
 
+class PrivateSourceSettings {
+  final bool enabled;
+  final int? acceptedAtMs;
+
+  const PrivateSourceSettings({required this.enabled, this.acceptedAtMs});
+
+  bool get isAccepted => enabled && acceptedAtMs != null;
+
+  PrivateSourceSettings copyWith({bool? enabled, int? acceptedAtMs}) {
+    return PrivateSourceSettings(
+      enabled: enabled ?? this.enabled,
+      acceptedAtMs: acceptedAtMs ?? this.acceptedAtMs,
+    );
+  }
+
+  Map<String, Object?> toJson() {
+    return {'enabled': enabled, 'acceptedAtMs': acceptedAtMs};
+  }
+
+  static PrivateSourceSettings? fromJson(Object? value) {
+    if (value is! Map<String, Object?>) {
+      return null;
+    }
+
+    final enabled = value['enabled'];
+    final acceptedAtMs = value['acceptedAtMs'];
+
+    if (enabled is! bool || (acceptedAtMs != null && acceptedAtMs is! int)) {
+      return null;
+    }
+
+    return PrivateSourceSettings(
+      enabled: enabled,
+      acceptedAtMs: acceptedAtMs as int?,
+    );
+  }
+}
+
 Color _backgroundOverlay(double opacity) {
   final alpha = (opacity.clamp(0.0, 1.0) * 255).round();
   return _appBackground.withAlpha(alpha);
@@ -230,6 +273,11 @@ class ReadingProgress {
   int get currentPage => pageIndex + 1;
 
   String get pageLabel => 'Page $currentPage / $totalPages';
+
+  bool get isPrivateSource {
+    final sourceType = metadata?.sourceType;
+    return sourceType != null && isPrivateSourceType(sourceType);
+  }
 
   String? get thumbnailUrl {
     if (images.isEmpty) {
@@ -309,6 +357,11 @@ class LibraryItem {
   int get totalPages => images.isEmpty ? 1 : images.length;
 
   int get currentPage => pageIndex + 1;
+
+  bool get isPrivateSource {
+    final sourceType = metadata?.sourceType;
+    return sourceType != null && isPrivateSourceType(sourceType);
+  }
 
   String get title {
     final metadataTitle = metadata?.title.trim();
@@ -523,6 +576,8 @@ class ReaderComfortSettings {
 
 const ReaderComfortSettings defaultReaderComfortSettings =
     ReaderComfortSettings(fitMode: ReaderFitMode.fitWidth, shade: 0);
+const PrivateSourceSettings defaultPrivateSourceSettings =
+    PrivateSourceSettings(enabled: false);
 const int _maxLibraryItems = 10;
 
 final ValueNotifier<ReadingProgress?> readingProgressNotifier =
@@ -537,6 +592,9 @@ final ValueNotifier<UiBackground> uiBackgroundNotifier =
 final ValueNotifier<ReaderComfortSettings> readerComfortNotifier =
     ValueNotifier<ReaderComfortSettings>(defaultReaderComfortSettings);
 
+final ValueNotifier<PrivateSourceSettings> privateSourceSettingsNotifier =
+    ValueNotifier<PrivateSourceSettings>(defaultPrivateSourceSettings);
+
 class KevDexMemory {
   static const String _lastLinkKey = 'kevdex.lastLink';
   static const String _lastDriveLinkKey = 'kevdex.lastDriveLink';
@@ -545,6 +603,8 @@ class KevDexMemory {
   static const String _libraryKey = 'kevdex.library';
   static const String _uiBackgroundKey = 'kevdex.uiBackground';
   static const String _readerComfortKey = 'kevdex.readerComfort';
+  static const String _privateSourceSettingsKey =
+      'kevdex.privateSourceSettings';
   static const String _customBackgroundFileName = 'kevdex_custom_background';
 
   static SharedPreferences? _preferences;
@@ -563,6 +623,7 @@ class KevDexMemory {
     _restoreLibrary(preferences);
     _restoreUiBackground(preferences);
     _restoreReaderComfort(preferences);
+    _restorePrivateSourceSettings(preferences);
   }
 
   static Future<void> saveLastLink(String link) async {
@@ -648,6 +709,45 @@ class KevDexMemory {
     await preferences.setString(_readerComfortKey, jsonEncode(settings));
   }
 
+  static Future<void> savePrivateSourceSettings(
+    PrivateSourceSettings settings,
+  ) async {
+    final preferences = await _loadPreferences();
+    privateSourceSettingsNotifier.value = settings;
+
+    if (!settings.enabled) {
+      await preferences.remove(_privateSourceSettingsKey);
+      return;
+    }
+
+    await preferences.setString(
+      _privateSourceSettingsKey,
+      jsonEncode(settings),
+    );
+  }
+
+  static Future<void> clearPrivateHistory() async {
+    final preferences = await _loadPreferences();
+    final cachedUrls = _cachedImageUrls(privateOnly: true);
+    final progress = readingProgressNotifier.value;
+
+    if (progress != null && progress.isPrivateSource) {
+      readingProgressNotifier.value = null;
+      await preferences.remove(_readerProgressKey);
+    }
+
+    final publicItems = libraryNotifier.value
+        .where((item) => !item.isPrivateSource)
+        .toList(growable: false);
+
+    libraryNotifier.value = List<LibraryItem>.unmodifiable(publicItems);
+    await preferences.setString(_libraryKey, jsonEncode(libraryNotifier.value));
+
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+    await _evictCachedImages(cachedUrls);
+  }
+
   static Future<void> clearAppCache() async {
     final preferences = await _loadPreferences();
     final cachedUrls = _cachedImageUrls();
@@ -660,6 +760,7 @@ class KevDexMemory {
       preferences.remove(_libraryKey),
       preferences.remove(_uiBackgroundKey),
       preferences.remove(_readerComfortKey),
+      preferences.remove(_privateSourceSettingsKey),
     ]);
 
     lastLink = null;
@@ -669,6 +770,7 @@ class KevDexMemory {
     libraryNotifier.value = const <LibraryItem>[];
     uiBackgroundNotifier.value = defaultUiBackground;
     readerComfortNotifier.value = defaultReaderComfortSettings;
+    privateSourceSettingsNotifier.value = defaultPrivateSourceSettings;
 
     PaintingBinding.instance.imageCache.clear();
     PaintingBinding.instance.imageCache.clearLiveImages();
@@ -700,7 +802,7 @@ class KevDexMemory {
     return background;
   }
 
-  static Set<String> _cachedImageUrls() {
+  static Set<String> _cachedImageUrls({bool privateOnly = false}) {
     final urls = <String>{};
 
     void addImage(DriveImage image) {
@@ -720,11 +822,15 @@ class KevDexMemory {
     }
 
     final progress = readingProgressNotifier.value;
-    if (progress != null) {
+    if (progress != null && (!privateOnly || progress.isPrivateSource)) {
       addProgress(progress);
     }
 
     for (final item in libraryNotifier.value) {
+      if (privateOnly && !item.isPrivateSource) {
+        continue;
+      }
+
       for (final image in item.images) {
         addImage(image);
       }
@@ -850,6 +956,24 @@ class KevDexMemory {
       }
     } on FormatException {
       preferences.remove(_readerComfortKey);
+    }
+  }
+
+  static void _restorePrivateSourceSettings(SharedPreferences preferences) {
+    final rawSettings = preferences.getString(_privateSourceSettingsKey);
+
+    if (rawSettings == null) {
+      return;
+    }
+
+    try {
+      final settings = PrivateSourceSettings.fromJson(jsonDecode(rawSettings));
+
+      if (settings != null) {
+        privateSourceSettingsNotifier.value = settings;
+      }
+    } on FormatException {
+      preferences.remove(_privateSourceSettingsKey);
     }
   }
 
@@ -1818,6 +1942,109 @@ class _SourceHubSheet extends StatelessWidget {
     Navigator.pop(context);
   }
 
+  Future<void> _confirmEnablePrivateSources(BuildContext context) async {
+    final shouldEnable = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: _surfaceColor,
+          title: const Text('Enable Private Sources?'),
+          content: const Text(
+            'Private adapters are hidden by default. Turn this on only if you want KevDex to show adult-source options in Source Hub.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: FilledButton.styleFrom(
+                backgroundColor: _primaryAccent,
+                foregroundColor: const Color(0xFF101016),
+              ),
+              child: const Text('Enable'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldEnable != true) {
+      return;
+    }
+
+    await KevDexMemory.savePrivateSourceSettings(
+      PrivateSourceSettings(
+        enabled: true,
+        acceptedAtMs: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
+
+    if (!context.mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Private sources enabled.')));
+  }
+
+  Future<void> _disablePrivateSources(BuildContext context) async {
+    await KevDexMemory.savePrivateSourceSettings(defaultPrivateSourceSettings);
+
+    if (!context.mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Private sources hidden.')));
+  }
+
+  Future<void> _confirmClearPrivateHistory(BuildContext context) async {
+    final shouldClear = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: _surfaceColor,
+          title: const Text('Clear private history?'),
+          content: const Text(
+            'This removes private Library items and private Continue Reading without touching normal reading history.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFFFB86B),
+                foregroundColor: const Color(0xFF101016),
+              ),
+              child: const Text('Clear'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldClear != true) {
+      return;
+    }
+
+    await KevDexMemory.clearPrivateHistory();
+
+    if (!context.mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Private history cleared.')));
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottomPadding = MediaQuery.paddingOf(context).bottom;
@@ -1879,21 +2106,53 @@ class _SourceHubSheet extends StatelessWidget {
                 if (definition != readyStorySources.last)
                   const SizedBox(height: 10),
               ],
-              if (plannedStorySources.isNotEmpty) ...[
-                const SizedBox(height: 18),
-                const _SourceHubSectionTitle(label: 'Planned'),
-                const SizedBox(height: 8),
-                for (final definition in plannedStorySources) ...[
-                  _SourceHubTile(
-                    definition: definition,
-                    selected: false,
-                    enabled: false,
-                    onTap: () {},
-                  ),
-                  if (definition != plannedStorySources.last)
-                    const SizedBox(height: 10),
-                ],
-              ],
+              if (plannedStorySources.isNotEmpty)
+                ValueListenableBuilder<PrivateSourceSettings>(
+                  valueListenable: privateSourceSettingsNotifier,
+                  builder: (context, settings, child) {
+                    final visiblePlannedSources = plannedStorySources
+                        .where(
+                          (definition) =>
+                              !definition.privateSource || settings.isAccepted,
+                        )
+                        .toList(growable: false);
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const SizedBox(height: 18),
+                        _PrivateSourceGateCard(
+                          settings: settings,
+                          onChanged: (enabled) {
+                            if (enabled) {
+                              unawaited(_confirmEnablePrivateSources(context));
+                            } else {
+                              unawaited(_disablePrivateSources(context));
+                            }
+                          },
+                          onClearPrivateHistory: () {
+                            unawaited(_confirmClearPrivateHistory(context));
+                          },
+                        ),
+                        if (visiblePlannedSources.isNotEmpty) ...[
+                          const SizedBox(height: 18),
+                          const _SourceHubSectionTitle(label: 'Planned'),
+                          const SizedBox(height: 8),
+                          for (final definition in visiblePlannedSources) ...[
+                            _SourceHubTile(
+                              definition: definition,
+                              selected: false,
+                              enabled: false,
+                              onTap: () {},
+                            ),
+                            if (definition != visiblePlannedSources.last)
+                              const SizedBox(height: 10),
+                          ],
+                        ],
+                      ],
+                    );
+                  },
+                ),
               const SizedBox(height: 18),
               Tooltip(
                 message: 'Clear app cache',
@@ -1932,6 +2191,99 @@ class _SourceHubSectionTitle extends StatelessWidget {
         color: _mutedText,
         fontSize: 12,
         fontWeight: FontWeight.w900,
+      ),
+    );
+  }
+}
+
+class _PrivateSourceGateCard extends StatelessWidget {
+  final PrivateSourceSettings settings;
+  final ValueChanged<bool> onChanged;
+  final VoidCallback onClearPrivateHistory;
+
+  const _PrivateSourceGateCard({
+    required this.settings,
+    required this.onChanged,
+    required this.onClearPrivateHistory,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isAccepted = settings.isAccepted;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF171720),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isAccepted ? _primaryAccent : const Color(0xFF393745),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isAccepted
+                    ? Icons.visibility_rounded
+                    : Icons.visibility_off_rounded,
+                color: isAccepted ? _primaryAccent : _mutedText,
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Private Sources',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Tooltip(
+                message: 'Toggle private sources',
+                child: Switch(
+                  value: isAccepted,
+                  activeThumbColor: _primaryAccent,
+                  onChanged: onChanged,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            isAccepted
+                ? 'Private adapters are visible in Source Hub. Private thumbnails stay covered in Library and Continue Reading.'
+                : 'Private adapters stay hidden until you choose to show them.',
+            style: const TextStyle(
+              color: _mutedText,
+              fontSize: 12,
+              height: 1.35,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (isAccepted) ...[
+            const SizedBox(height: 12),
+            Tooltip(
+              message: 'Clear private history',
+              child: OutlinedButton.icon(
+                onPressed: onClearPrivateHistory,
+                icon: const Icon(Icons.hide_image_rounded),
+                label: const Text('Clear Private History'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _secondaryAccent,
+                  side: const BorderSide(color: Color(0xFF7A5A34)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -2142,22 +2494,25 @@ class _ContinueReadingCard extends StatelessWidget {
                 child: SizedBox(
                   width: 64,
                   height: 78,
-                  child: thumbnailUrl == null
-                      ? const ColoredBox(
-                          color: _fieldColor,
-                          child: Icon(
-                            Icons.auto_stories_rounded,
-                            color: _primaryAccent,
+                  child: _PrivateThumbnailFrame(
+                    isPrivate: progress.isPrivateSource,
+                    child: thumbnailUrl == null
+                        ? const ColoredBox(
+                            color: _fieldColor,
+                            child: Icon(
+                              Icons.auto_stories_rounded,
+                              color: _primaryAccent,
+                            ),
+                          )
+                        : CachedNetworkImage(
+                            imageUrl: thumbnailUrl,
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) =>
+                                const _ThumbnailPlaceholder(),
+                            errorWidget: (context, url, error) =>
+                                const _ThumbnailPlaceholder(),
                           ),
-                        )
-                      : CachedNetworkImage(
-                          imageUrl: thumbnailUrl,
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) =>
-                              const _ThumbnailPlaceholder(),
-                          errorWidget: (context, url, error) =>
-                              const _ThumbnailPlaceholder(),
-                        ),
+                  ),
                 ),
               ),
               const SizedBox(width: 14),
@@ -2424,22 +2779,25 @@ class _LibraryItemCard extends StatelessWidget {
                 child: SizedBox(
                   width: 54,
                   height: 64,
-                  child: thumbnailUrl == null
-                      ? const ColoredBox(
-                          color: _fieldColor,
-                          child: Icon(
-                            Icons.auto_stories_rounded,
-                            color: _primaryAccent,
+                  child: _PrivateThumbnailFrame(
+                    isPrivate: item.isPrivateSource,
+                    child: thumbnailUrl == null
+                        ? const ColoredBox(
+                            color: _fieldColor,
+                            child: Icon(
+                              Icons.auto_stories_rounded,
+                              color: _primaryAccent,
+                            ),
+                          )
+                        : CachedNetworkImage(
+                            imageUrl: thumbnailUrl,
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) =>
+                                const _ThumbnailPlaceholder(),
+                            errorWidget: (context, url, error) =>
+                                const _ThumbnailPlaceholder(),
                           ),
-                        )
-                      : CachedNetworkImage(
-                          imageUrl: thumbnailUrl,
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) =>
-                              const _ThumbnailPlaceholder(),
-                          errorWidget: (context, url, error) =>
-                              const _ThumbnailPlaceholder(),
-                        ),
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -3389,6 +3747,40 @@ class _GalleryPageCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _PrivateThumbnailFrame extends StatelessWidget {
+  final bool isPrivate;
+  final Widget child;
+
+  const _PrivateThumbnailFrame({required this.isPrivate, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isPrivate) {
+      return child;
+    }
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Positioned.fill(
+          child: ImageFiltered(
+            imageFilter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+            child: child,
+          ),
+        ),
+        const DecoratedBox(decoration: BoxDecoration(color: Color(0xAA101016))),
+        const Center(
+          child: Icon(
+            Icons.visibility_off_rounded,
+            color: _primaryAccent,
+            size: 24,
+          ),
+        ),
+      ],
     );
   }
 }
