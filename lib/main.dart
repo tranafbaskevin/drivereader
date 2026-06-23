@@ -26,6 +26,71 @@ const String _shadowBackgroundAsset =
 
 enum StorySourceType { driveFolder, mangaDexChapter, singlePage }
 
+class StoryMetadata {
+  final StorySourceType sourceType;
+  final String title;
+  final String? chapterLabel;
+
+  const StoryMetadata({
+    required this.sourceType,
+    required this.title,
+    this.chapterLabel,
+  });
+
+  String get sourceLabel {
+    switch (sourceType) {
+      case StorySourceType.driveFolder:
+        return 'Google Drive';
+      case StorySourceType.mangaDexChapter:
+        return 'MangaDex';
+      case StorySourceType.singlePage:
+        return 'Single Page';
+    }
+  }
+
+  Map<String, Object?> toJson() {
+    return {
+      'sourceType': sourceType.name,
+      'title': title,
+      'chapterLabel': chapterLabel,
+    };
+  }
+
+  static StoryMetadata? fromJson(Object? value) {
+    if (value is! Map<String, Object?>) {
+      return null;
+    }
+
+    final sourceTypeName = value['sourceType'];
+    final title = value['title'];
+    final chapterLabel = value['chapterLabel'];
+
+    if (sourceTypeName is! String ||
+        title is! String ||
+        (chapterLabel != null && chapterLabel is! String)) {
+      return null;
+    }
+
+    StorySourceType? sourceType;
+    for (final type in StorySourceType.values) {
+      if (type.name == sourceTypeName) {
+        sourceType = type;
+        break;
+      }
+    }
+
+    if (sourceType == null) {
+      return null;
+    }
+
+    return StoryMetadata(
+      sourceType: sourceType,
+      title: title,
+      chapterLabel: chapterLabel as String?,
+    );
+  }
+}
+
 Color _backgroundOverlay(double opacity) {
   final alpha = (opacity.clamp(0.0, 1.0) * 255).round();
   return _appBackground.withAlpha(alpha);
@@ -67,11 +132,13 @@ class ReadingProgress {
   final String sourceLink;
   final List<DriveImage> images;
   final int pageIndex;
+  final StoryMetadata? metadata;
 
   const ReadingProgress({
     required this.sourceLink,
     required this.images,
     required this.pageIndex,
+    this.metadata,
   });
 
   int get totalPages => images.isEmpty ? 1 : images.length;
@@ -94,6 +161,7 @@ class ReadingProgress {
       'sourceLink': sourceLink,
       'pageIndex': pageIndex,
       'images': images.map((image) => image.toJson()).toList(),
+      'metadata': metadata?.toJson(),
     };
   }
 
@@ -105,6 +173,7 @@ class ReadingProgress {
     final sourceLink = value['sourceLink'];
     final pageIndex = value['pageIndex'];
     final imagesValue = value['images'];
+    final metadata = StoryMetadata.fromJson(value['metadata']);
 
     if (sourceLink is! String || pageIndex is! int || imagesValue is! List) {
       return null;
@@ -121,6 +190,7 @@ class ReadingProgress {
       pageIndex: images.isEmpty
           ? 0
           : pageIndex.clamp(0, images.length - 1).toInt(),
+      metadata: metadata,
     );
   }
 }
@@ -130,12 +200,14 @@ class LibraryItem {
   final List<DriveImage> images;
   final int pageIndex;
   final int updatedAtMs;
+  final StoryMetadata? metadata;
 
   const LibraryItem({
     required this.sourceLink,
     required this.images,
     required this.pageIndex,
     required this.updatedAtMs,
+    this.metadata,
   });
 
   factory LibraryItem.fromProgress(ReadingProgress progress) {
@@ -146,6 +218,7 @@ class LibraryItem {
           ? 0
           : progress.pageIndex.clamp(0, progress.images.length - 1).toInt(),
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+      metadata: progress.metadata,
     );
   }
 
@@ -154,6 +227,11 @@ class LibraryItem {
   int get currentPage => pageIndex + 1;
 
   String get title {
+    final metadataTitle = metadata?.title.trim();
+    if (metadataTitle != null && metadataTitle.isNotEmpty) {
+      return metadataTitle;
+    }
+
     if (isMangaDexChapterLink(sourceLink)) {
       return 'MangaDex Chapter';
     }
@@ -165,7 +243,14 @@ class LibraryItem {
     return 'Single Page';
   }
 
-  String get subtitle => 'Page $currentPage / $totalPages';
+  String get subtitle {
+    final chapterLabel = metadata?.chapterLabel?.trim();
+    if (chapterLabel != null && chapterLabel.isNotEmpty) {
+      return '$chapterLabel - Page $currentPage / $totalPages';
+    }
+
+    return 'Page $currentPage / $totalPages';
+  }
 
   String? get thumbnailUrl {
     if (images.isEmpty) {
@@ -183,6 +268,7 @@ class LibraryItem {
       pageIndex: images.isEmpty
           ? 0
           : pageIndex.clamp(0, images.length - 1).toInt(),
+      metadata: metadata,
     );
   }
 
@@ -192,6 +278,7 @@ class LibraryItem {
       'pageIndex': pageIndex,
       'updatedAtMs': updatedAtMs,
       'images': images.map((image) => image.toJson()).toList(),
+      'metadata': metadata?.toJson(),
     };
   }
 
@@ -204,6 +291,7 @@ class LibraryItem {
     final pageIndex = value['pageIndex'];
     final updatedAtMs = value['updatedAtMs'];
     final imagesValue = value['images'];
+    final metadata = StoryMetadata.fromJson(value['metadata']);
 
     if (sourceLink is! String ||
         pageIndex is! int ||
@@ -224,6 +312,7 @@ class LibraryItem {
           ? 0
           : pageIndex.clamp(0, images.length - 1).toInt(),
       updatedAtMs: updatedAtMs,
+      metadata: metadata,
     );
   }
 }
@@ -365,6 +454,8 @@ final ValueNotifier<ReaderComfortSettings> readerComfortNotifier =
 
 class KevDexMemory {
   static const String _lastLinkKey = 'kevdex.lastLink';
+  static const String _lastDriveLinkKey = 'kevdex.lastDriveLink';
+  static const String _lastMangaDexLinkKey = 'kevdex.lastMangaDexLink';
   static const String _readerProgressKey = 'kevdex.readerProgress';
   static const String _libraryKey = 'kevdex.library';
   static const String _uiBackgroundKey = 'kevdex.uiBackground';
@@ -373,12 +464,16 @@ class KevDexMemory {
 
   static SharedPreferences? _preferences;
   static String? lastLink;
+  static String? lastDriveLink;
+  static String? lastMangaDexLink;
 
   const KevDexMemory._();
 
   static Future<void> load() async {
     final preferences = await _loadPreferences();
     lastLink = preferences.getString(_lastLinkKey);
+    lastDriveLink = preferences.getString(_lastDriveLinkKey);
+    lastMangaDexLink = preferences.getString(_lastMangaDexLinkKey);
     _restoreReadingProgress(preferences);
     _restoreLibrary(preferences);
     _restoreUiBackground(preferences);
@@ -397,6 +492,34 @@ class KevDexMemory {
 
     lastLink = cleanedLink;
     await preferences.setString(_lastLinkKey, cleanedLink);
+  }
+
+  static Future<void> saveLastDriveLink(String link) async {
+    final cleanedLink = link.trim();
+    final preferences = await _loadPreferences();
+
+    if (cleanedLink.isEmpty) {
+      await preferences.remove(_lastDriveLinkKey);
+      lastDriveLink = null;
+      return;
+    }
+
+    lastDriveLink = cleanedLink;
+    await preferences.setString(_lastDriveLinkKey, cleanedLink);
+  }
+
+  static Future<void> saveLastMangaDexLink(String link) async {
+    final cleanedLink = link.trim();
+    final preferences = await _loadPreferences();
+
+    if (cleanedLink.isEmpty) {
+      await preferences.remove(_lastMangaDexLinkKey);
+      lastMangaDexLink = null;
+      return;
+    }
+
+    lastMangaDexLink = cleanedLink;
+    await preferences.setString(_lastMangaDexLinkKey, cleanedLink);
   }
 
   static Future<void> saveReadingProgress(ReadingProgress progress) async {
@@ -621,35 +744,61 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final TextEditingController linkController = TextEditingController();
+  final TextEditingController driveLinkController = TextEditingController();
+  final TextEditingController mangaDexLinkController = TextEditingController();
   bool isOpening = false;
 
   @override
   void initState() {
     super.initState();
-    final savedLink = KevDexMemory.lastLink;
+    final savedDriveLink = KevDexMemory.lastDriveLink;
+    final savedMangaDexLink = KevDexMemory.lastMangaDexLink;
+    final fallbackLink = KevDexMemory.lastLink;
 
-    if (savedLink != null && savedLink.isNotEmpty) {
-      linkController.text = savedLink;
+    if (savedDriveLink != null && savedDriveLink.isNotEmpty) {
+      driveLinkController.text = savedDriveLink;
+    } else if (fallbackLink != null &&
+        fallbackLink.isNotEmpty &&
+        !isMangaDexChapterLink(fallbackLink)) {
+      driveLinkController.text = fallbackLink;
+    }
+
+    if (savedMangaDexLink != null && savedMangaDexLink.isNotEmpty) {
+      mangaDexLinkController.text = savedMangaDexLink;
+    } else if (fallbackLink != null &&
+        fallbackLink.isNotEmpty &&
+        isMangaDexChapterLink(fallbackLink)) {
+      mangaDexLinkController.text = fallbackLink;
     }
   }
 
   @override
   void dispose() {
-    linkController.dispose();
+    driveLinkController.dispose();
+    mangaDexLinkController.dispose();
     super.dispose();
   }
 
-  Future<void> _openReader() async {
+  Future<void> _openReader(StorySourceType requestedSourceType) async {
     if (isOpening) {
       return;
     }
 
-    final link = linkController.text.trim();
+    final link = switch (requestedSourceType) {
+      StorySourceType.mangaDexChapter => mangaDexLinkController.text.trim(),
+      StorySourceType.driveFolder ||
+      StorySourceType.singlePage => driveLinkController.text.trim(),
+    };
 
     if (link.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Paste a story link first.')),
+        SnackBar(
+          content: Text(
+            requestedSourceType == StorySourceType.mangaDexChapter
+                ? 'Paste a MangaDex chapter link first.'
+                : 'Paste a Google Drive link first.',
+          ),
+        ),
       );
       return;
     }
@@ -658,19 +807,53 @@ class _HomePageState extends State<HomePage> {
     final folderId = extractDriveFolderId(link);
     final mangaDexChapterId = extractMangaDexChapterId(link);
 
+    if (requestedSourceType == StorySourceType.mangaDexChapter &&
+        mangaDexChapterId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Paste a MangaDex chapter link.')),
+      );
+      return;
+    }
+
+    if (requestedSourceType != StorySourceType.mangaDexChapter &&
+        mangaDexChapterId != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Use the MangaDex box for this link.')),
+      );
+      return;
+    }
+
+    StoryMetadata? metadata;
+
     List<DriveImage> images = [];
     await KevDexMemory.saveLastLink(link);
+    if (requestedSourceType == StorySourceType.mangaDexChapter) {
+      await KevDexMemory.saveLastMangaDexLink(link);
+    } else {
+      await KevDexMemory.saveLastDriveLink(link);
+    }
 
     setState(() {
       isOpening = true;
     });
 
     try {
-      if (sourceType == StorySourceType.mangaDexChapter &&
+      if (requestedSourceType == StorySourceType.mangaDexChapter &&
           mangaDexChapterId != null) {
         images = await fetchMangaDexChapterImages(mangaDexChapterId);
+        metadata = await fetchMangaDexChapterMetadata(mangaDexChapterId);
       } else if (folderId != null) {
         images = await fetchDriveFolderImages(folderId);
+        final folderName = await fetchDriveFolderName(folderId);
+        metadata = StoryMetadata(
+          sourceType: StorySourceType.driveFolder,
+          title: folderName ?? 'Drive Folder',
+        );
+      } else {
+        metadata = const StoryMetadata(
+          sourceType: StorySourceType.singlePage,
+          title: 'Google Drive Image',
+        );
       }
     } finally {
       if (mounted) {
@@ -689,6 +872,7 @@ class _HomePageState extends State<HomePage> {
         sourceLink: link,
         images: List<DriveImage>.unmodifiable(images),
         pageIndex: 0,
+        metadata: metadata,
       );
       readingProgressNotifier.value = progress;
       unawaited(KevDexMemory.saveReadingProgress(progress));
@@ -702,6 +886,7 @@ class _HomePageState extends State<HomePage> {
           images: images,
           initialIndex: 0,
           startInGallery: sourceType == StorySourceType.driveFolder,
+          metadata: metadata,
         ),
       ),
     );
@@ -716,6 +901,7 @@ class _HomePageState extends State<HomePage> {
           images: progress.images,
           initialIndex: progress.pageIndex,
           startInGallery: false,
+          metadata: progress.metadata,
         ),
       ),
     );
@@ -733,6 +919,7 @@ class _HomePageState extends State<HomePage> {
           images: item.images,
           initialIndex: item.pageIndex,
           startInGallery: false,
+          metadata: item.metadata,
         ),
       ),
     );
@@ -769,7 +956,25 @@ class _HomePageState extends State<HomePage> {
                     ),
                     const SizedBox(height: 8),
                     const _KevDexHeader(),
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 22),
+                    _SourceInputPanel(
+                      driveController: driveLinkController,
+                      mangaDexController: mangaDexLinkController,
+                      isOpening: isOpening,
+                      onOpenDrive: () =>
+                          _openReader(StorySourceType.driveFolder),
+                      onOpenMangaDex: () =>
+                          _openReader(StorySourceType.mangaDexChapter),
+                      onClearDrive: () {
+                        driveLinkController.clear();
+                        unawaited(KevDexMemory.saveLastDriveLink(''));
+                      },
+                      onClearMangaDex: () {
+                        mangaDexLinkController.clear();
+                        unawaited(KevDexMemory.saveLastMangaDexLink(''));
+                      },
+                    ),
+                    const SizedBox(height: 22),
                     ValueListenableBuilder<ReadingProgress?>(
                       valueListenable: readingProgressNotifier,
                       builder: (context, progress, child) {
@@ -801,54 +1006,6 @@ class _HomePageState extends State<HomePage> {
                           ),
                         );
                       },
-                    ),
-                    TextField(
-                      controller: linkController,
-                      textInputAction: TextInputAction.done,
-                      decoration: InputDecoration(
-                        hintText: 'Google Drive / MangaDex chapter link',
-                        prefixIcon: const Icon(Icons.link_rounded),
-                        suffixIcon: IconButton(
-                          tooltip: 'Clear',
-                          icon: const Icon(Icons.close_rounded),
-                          onPressed: () {
-                            linkController.clear();
-                            unawaited(KevDexMemory.saveLastLink(''));
-                          },
-                        ),
-                      ),
-                      onSubmitted: (_) => _openReader(),
-                    ),
-                    const SizedBox(height: 14),
-                    SizedBox(
-                      height: 54,
-                      child: ElevatedButton.icon(
-                        onPressed: isOpening ? null : _openReader,
-                        icon: isOpening
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.2,
-                                  color: Color(0xFF121217),
-                                ),
-                              )
-                            : const Icon(Icons.menu_book_rounded),
-                        label: Text(
-                          isOpening ? 'Gathering pages...' : 'Open Reader',
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _primaryAccent,
-                          foregroundColor: const Color(0xFF121217),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          textStyle: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
                     ),
                     const SizedBox(height: 20),
                     const Text(
@@ -1180,27 +1337,7 @@ class _KevDexHeader extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Container(
-          width: 92,
-          height: 92,
-          decoration: BoxDecoration(
-            color: _glassSurfaceColor,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: const Color(0xFF2F2D39)),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x33000000),
-                blurRadius: 24,
-                offset: Offset(0, 14),
-              ),
-            ],
-          ),
-          child: const Icon(
-            Icons.auto_stories_rounded,
-            size: 48,
-            color: _primaryAccent,
-          ),
-        ),
+        const _KevDexLogo(),
         const SizedBox(height: 22),
         const Text(
           'KevDex',
@@ -1230,6 +1367,202 @@ class _KevDexHeader extends StatelessWidget {
             color: _mutedText,
             fontSize: 13,
             fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _KevDexLogo extends StatelessWidget {
+  const _KevDexLogo();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 92,
+      height: 92,
+      decoration: BoxDecoration(
+        color: _glassSurfaceColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF2F2D39)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x33000000),
+            blurRadius: 24,
+            offset: Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          const Icon(Icons.menu_book_rounded, size: 46, color: _primaryAccent),
+          Positioned(
+            right: 18,
+            bottom: 18,
+            child: Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: _surfaceColor,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFF393745)),
+              ),
+              child: const Icon(
+                Icons.account_tree_rounded,
+                size: 15,
+                color: _secondaryAccent,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SourceInputPanel extends StatelessWidget {
+  final TextEditingController driveController;
+  final TextEditingController mangaDexController;
+  final bool isOpening;
+  final VoidCallback onOpenDrive;
+  final VoidCallback onOpenMangaDex;
+  final VoidCallback onClearDrive;
+  final VoidCallback onClearMangaDex;
+
+  const _SourceInputPanel({
+    required this.driveController,
+    required this.mangaDexController,
+    required this.isOpening,
+    required this.onOpenDrive,
+    required this.onOpenMangaDex,
+    required this.onClearDrive,
+    required this.onClearMangaDex,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _glassSurfaceColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF2F2D39)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _SourceLinkField(
+            label: 'Google Drive',
+            hintText: 'Paste Google Drive folder or image link',
+            icon: Icons.cloud_queue_rounded,
+            controller: driveController,
+            isOpening: isOpening,
+            openTooltip: 'Open Google Drive',
+            onOpen: onOpenDrive,
+            onClear: onClearDrive,
+          ),
+          const SizedBox(height: 12),
+          _SourceLinkField(
+            label: 'MangaDex',
+            hintText: 'Paste MangaDex chapter link',
+            icon: Icons.public_rounded,
+            controller: mangaDexController,
+            isOpening: isOpening,
+            openTooltip: 'Open MangaDex',
+            onOpen: onOpenMangaDex,
+            onClear: onClearMangaDex,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SourceLinkField extends StatelessWidget {
+  final String label;
+  final String hintText;
+  final IconData icon;
+  final TextEditingController controller;
+  final bool isOpening;
+  final String openTooltip;
+  final VoidCallback onOpen;
+  final VoidCallback onClear;
+
+  const _SourceLinkField({
+    required this.label,
+    required this.hintText,
+    required this.icon,
+    required this.controller,
+    required this.isOpening,
+    required this.openTooltip,
+    required this.onOpen,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Icon(icon, color: _primaryAccent, size: 18),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 52,
+          child: TextField(
+            controller: controller,
+            textInputAction: TextInputAction.done,
+            decoration: InputDecoration(
+              hintText: hintText,
+              prefixIcon: const Icon(Icons.link_rounded),
+              suffixIcon: SizedBox(
+                width: 104,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    IconButton(
+                      tooltip: 'Clear',
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: isOpening ? null : onClear,
+                    ),
+                    IconButton(
+                      tooltip: openTooltip,
+                      icon: isOpening
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.2,
+                                color: _primaryAccent,
+                              ),
+                            )
+                          : const Icon(Icons.arrow_forward_rounded),
+                      color: _primaryAccent,
+                      onPressed: isOpening ? null : onOpen,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            onSubmitted: (_) {
+              if (!isOpening) {
+                onOpen();
+              }
+            },
           ),
         ),
       ],
@@ -1454,7 +1787,7 @@ class _LibraryItemCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 5),
                     Text(
-                      item.sourceLink,
+                      item.metadata?.sourceLabel ?? item.sourceLink,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -1486,6 +1819,7 @@ class ReaderPage extends StatefulWidget {
   final List<DriveImage> images;
   final int initialIndex;
   final bool startInGallery;
+  final StoryMetadata? metadata;
 
   const ReaderPage({
     super.key,
@@ -1493,6 +1827,7 @@ class ReaderPage extends StatefulWidget {
     required this.images,
     required this.initialIndex,
     this.startInGallery = false,
+    this.metadata,
   });
 
   @override
@@ -1636,6 +1971,7 @@ class _ReaderPageState extends State<ReaderPage> {
         builder: (context) => ReaderGalleryPage(
           folderImages: readerImages,
           sourceLink: widget.link,
+          metadata: widget.metadata,
         ),
       ),
     );
@@ -1658,6 +1994,7 @@ class _ReaderPageState extends State<ReaderPage> {
       sourceLink: widget.link,
       images: List<DriveImage>.unmodifiable(readerImages),
       pageIndex: pageIndex.clamp(0, readerImages.length - 1).toInt(),
+      metadata: widget.metadata,
     );
 
     readingProgressNotifier.value = progress;
@@ -1708,6 +2045,7 @@ class _ReaderPageState extends State<ReaderPage> {
                 ? _GalleryGrid(
                     folderImages: folderImages,
                     sourceLink: widget.link,
+                    metadata: widget.metadata,
                   )
                 : readerImages.isEmpty
                 ? const _ReaderMessageState(
@@ -2114,11 +2452,13 @@ class _ReaderComfortSheet extends StatelessWidget {
 class ReaderGalleryPage extends StatelessWidget {
   final List<DriveImage> folderImages;
   final String sourceLink;
+  final StoryMetadata? metadata;
 
   const ReaderGalleryPage({
     super.key,
     required this.folderImages,
     required this.sourceLink,
+    this.metadata,
   });
 
   @override
@@ -2126,7 +2466,11 @@ class ReaderGalleryPage extends StatelessWidget {
     return Scaffold(
       body: Stack(
         children: [
-          _GalleryGrid(folderImages: folderImages, sourceLink: sourceLink),
+          _GalleryGrid(
+            folderImages: folderImages,
+            sourceLink: sourceLink,
+            metadata: metadata,
+          ),
           Positioned(
             top: 40,
             left: 10,
@@ -2153,8 +2497,13 @@ class ReaderGalleryPage extends StatelessWidget {
 class _GalleryGrid extends StatelessWidget {
   final List<DriveImage> folderImages;
   final String sourceLink;
+  final StoryMetadata? metadata;
 
-  const _GalleryGrid({required this.folderImages, required this.sourceLink});
+  const _GalleryGrid({
+    required this.folderImages,
+    required this.sourceLink,
+    this.metadata,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -2233,6 +2582,7 @@ class _GalleryGrid extends StatelessWidget {
                             images: folderImages,
                             initialIndex: index,
                             startInGallery: false,
+                            metadata: metadata,
                           ),
                         ),
                       );
@@ -2501,6 +2851,31 @@ String? extractMangaDexChapterId(String link) {
   return directIdMatch?.group(0);
 }
 
+Future<String?> fetchDriveFolderName(String folderId) async {
+  try {
+    final response = await http.get(
+      Uri.https('www.googleapis.com', '/drive/v3/files/$folderId', {
+        'fields': 'name',
+        'key': 'AIzaSyAHIpqx856jNpz9nrD7BBwakLkTY89cHnc',
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      return null;
+    }
+
+    final data = jsonDecode(response.body);
+
+    if (data is! Map<String, Object?>) {
+      return null;
+    }
+
+    return _cleanString(data['name']);
+  } catch (_) {
+    return null;
+  }
+}
+
 Future<List<DriveImage>> fetchDriveFolderImages(String folderId) async {
   final response = await http.get(
     Uri.parse(
@@ -2569,6 +2944,138 @@ Future<List<DriveImage>> fetchMangaDexChapterImages(String chapterId) async {
         return DriveImage(thumbnailUrl: pageUrl, fullUrl: pageUrl);
       })
       .toList(growable: false);
+}
+
+Future<StoryMetadata> fetchMangaDexChapterMetadata(String chapterId) async {
+  const fallback = StoryMetadata(
+    sourceType: StorySourceType.mangaDexChapter,
+    title: 'MangaDex Chapter',
+  );
+
+  try {
+    final response = await http.get(
+      Uri.https('api.mangadex.org', '/chapter/$chapterId', {
+        'includes[]': 'manga',
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      return fallback;
+    }
+
+    final decoded = jsonDecode(response.body);
+
+    if (decoded is! Map<String, Object?>) {
+      return fallback;
+    }
+
+    final data = decoded['data'];
+
+    if (data is! Map<String, Object?>) {
+      return fallback;
+    }
+
+    final attributes = data['attributes'];
+    final relationships = data['relationships'];
+    final mangaTitle = _mangaDexMangaTitle(relationships);
+    final chapterLabel = _mangaDexChapterLabel(attributes);
+
+    return StoryMetadata(
+      sourceType: StorySourceType.mangaDexChapter,
+      title: mangaTitle ?? fallback.title,
+      chapterLabel: chapterLabel,
+    );
+  } catch (_) {
+    return fallback;
+  }
+}
+
+String? _mangaDexMangaTitle(Object? relationships) {
+  if (relationships is! List) {
+    return null;
+  }
+
+  for (final relationship in relationships.whereType<Map>()) {
+    if (relationship['type'] != 'manga') {
+      continue;
+    }
+
+    final attributes = relationship['attributes'];
+
+    if (attributes is! Map) {
+      continue;
+    }
+
+    return _bestLocalizedTitle(attributes['title']);
+  }
+
+  return null;
+}
+
+String? _mangaDexChapterLabel(Object? attributes) {
+  if (attributes is! Map) {
+    return null;
+  }
+
+  final chapterNumber = _cleanString(attributes['chapter']);
+  final chapterTitle = _cleanString(attributes['title']);
+  final parts = <String>[];
+
+  if (chapterNumber != null) {
+    parts.add('Chapter $chapterNumber');
+  }
+
+  if (chapterTitle != null) {
+    parts.add(chapterTitle);
+  }
+
+  if (parts.isEmpty) {
+    return null;
+  }
+
+  return parts.join(' - ');
+}
+
+String? _bestLocalizedTitle(Object? titleValue) {
+  if (titleValue is String) {
+    return _cleanString(titleValue);
+  }
+
+  if (titleValue is! Map) {
+    return null;
+  }
+
+  for (final key in const ['en', 'ja-ro', 'ja', 'vi']) {
+    final title = _cleanString(titleValue[key]);
+
+    if (title != null) {
+      return title;
+    }
+  }
+
+  for (final value in titleValue.values) {
+    final title = _cleanString(value);
+
+    if (title != null) {
+      return title;
+    }
+  }
+
+  return null;
+}
+
+String? _cleanString(Object? value) {
+  if (value is! String) {
+    return null;
+  }
+
+  final text = value.trim();
+
+  if (text.isEmpty) {
+    return null;
+  }
+
+  return text;
 }
 
 String? convertDriveLinkToImageUrl(String link) {

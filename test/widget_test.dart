@@ -24,7 +24,10 @@ void main() {
 
     expect(find.text('KevDex'), findsOneWidget);
     expect(find.text('Read Anywhere.'), findsOneWidget);
-    expect(find.text('Open Reader'), findsOneWidget);
+    expect(find.text('Google Drive'), findsOneWidget);
+    expect(find.text('MangaDex'), findsOneWidget);
+    expect(find.byTooltip('Open Google Drive'), findsOneWidget);
+    expect(find.byTooltip('Open MangaDex'), findsOneWidget);
     expect(find.text('By Kevin and Dora-chan'), findsOneWidget);
   });
 
@@ -86,6 +89,11 @@ void main() {
         images: [],
         pageIndex: 0,
         updatedAtMs: 1,
+        metadata: StoryMetadata(
+          sourceType: StorySourceType.mangaDexChapter,
+          title: 'Digi Cat',
+          chapterLabel: 'Chapter 1 - First Read',
+        ),
       ),
     ];
     uiBackgroundNotifier.value = defaultUiBackground;
@@ -93,7 +101,9 @@ void main() {
 
     await tester.pumpWidget(const DriveReaderApp());
 
-    expect(find.text('MangaDex Chapter'), findsOneWidget);
+    expect(find.text('Digi Cat'), findsOneWidget);
+    expect(find.text('Chapter 1 - First Read - Page 1 / 1'), findsOneWidget);
+    expect(find.text('MangaDex'), findsWidgets);
 
     libraryNotifier.value = const <LibraryItem>[];
   });
