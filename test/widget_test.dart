@@ -24,11 +24,46 @@ void main() {
 
     expect(find.text('KevDex'), findsOneWidget);
     expect(find.text('Read Anywhere.'), findsOneWidget);
-    expect(find.text('Google Drive'), findsOneWidget);
+    expect(find.text('Source Hub'), findsOneWidget);
+    expect(find.text('Google Drive'), findsWidgets);
     expect(find.text('MangaDex'), findsOneWidget);
     expect(find.byTooltip('Open Google Drive'), findsOneWidget);
-    expect(find.byTooltip('Open MangaDex'), findsOneWidget);
+    expect(find.byTooltip('Manage sources'), findsOneWidget);
     expect(find.text('By Kevin and Dora-chan'), findsOneWidget);
+  });
+
+  testWidgets('Home screen switches ready sources', (
+    WidgetTester tester,
+  ) async {
+    readingProgressNotifier.value = null;
+    libraryNotifier.value = const <LibraryItem>[];
+    uiBackgroundNotifier.value = defaultUiBackground;
+    readerComfortNotifier.value = defaultReaderComfortSettings;
+
+    await tester.pumpWidget(const DriveReaderApp());
+
+    await tester.tap(find.widgetWithText(FilterChip, 'MangaDex'));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Open MangaDex'), findsOneWidget);
+    expect(find.byTooltip('Open Google Drive'), findsNothing);
+  });
+
+  testWidgets('Source Hub shows planned adapters', (WidgetTester tester) async {
+    readingProgressNotifier.value = null;
+    libraryNotifier.value = const <LibraryItem>[];
+    uiBackgroundNotifier.value = defaultUiBackground;
+    readerComfortNotifier.value = defaultReaderComfortSettings;
+
+    await tester.pumpWidget(const DriveReaderApp());
+
+    await tester.tap(find.byTooltip('Manage sources'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ready'), findsWidgets);
+    expect(find.text('Planned'), findsOneWidget);
+    expect(find.text('NHentai'), findsOneWidget);
+    expect(find.text('Hitomi'), findsOneWidget);
   });
 
   testWidgets('Home screen shows continue reading when progress exists', (

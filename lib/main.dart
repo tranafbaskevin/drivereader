@@ -24,7 +24,87 @@ const String _eyeBackgroundAsset = 'assets/images/kevdex_bg_manga_eye.png';
 const String _shadowBackgroundAsset =
     'assets/images/kevdex_bg_manga_shadow.png';
 
-enum StorySourceType { driveFolder, mangaDexChapter, singlePage }
+enum StorySourceStatus { ready, planned }
+
+enum StorySourceType {
+  driveFolder,
+  mangaDexChapter,
+  nHentaiGallery,
+  hitomiGallery,
+  singlePage,
+}
+
+class StorySourceDefinition {
+  final StorySourceType type;
+  final String label;
+  final String hintText;
+  final IconData icon;
+  final StorySourceStatus status;
+  final bool privateSource;
+
+  const StorySourceDefinition({
+    required this.type,
+    required this.label,
+    required this.hintText,
+    required this.icon,
+    required this.status,
+    this.privateSource = false,
+  });
+
+  bool get isReady => status == StorySourceStatus.ready;
+}
+
+const List<StorySourceDefinition> storySourceDefinitions = [
+  StorySourceDefinition(
+    type: StorySourceType.driveFolder,
+    label: 'Google Drive',
+    hintText: 'Paste Google Drive folder or image link',
+    icon: Icons.cloud_queue_rounded,
+    status: StorySourceStatus.ready,
+  ),
+  StorySourceDefinition(
+    type: StorySourceType.mangaDexChapter,
+    label: 'MangaDex',
+    hintText: 'Paste MangaDex chapter link',
+    icon: Icons.public_rounded,
+    status: StorySourceStatus.ready,
+  ),
+  StorySourceDefinition(
+    type: StorySourceType.nHentaiGallery,
+    label: 'NHentai',
+    hintText: 'Adapter planned',
+    icon: Icons.lock_outline_rounded,
+    status: StorySourceStatus.planned,
+    privateSource: true,
+  ),
+  StorySourceDefinition(
+    type: StorySourceType.hitomiGallery,
+    label: 'Hitomi',
+    hintText: 'Adapter planned',
+    icon: Icons.lock_outline_rounded,
+    status: StorySourceStatus.planned,
+    privateSource: true,
+  ),
+];
+
+StorySourceDefinition sourceDefinitionFor(StorySourceType sourceType) {
+  return storySourceDefinitions.firstWhere(
+    (definition) => definition.type == sourceType,
+    orElse: () => storySourceDefinitions.first,
+  );
+}
+
+List<StorySourceDefinition> get readyStorySources {
+  return storySourceDefinitions
+      .where((definition) => definition.isReady)
+      .toList(growable: false);
+}
+
+List<StorySourceDefinition> get plannedStorySources {
+  return storySourceDefinitions
+      .where((definition) => !definition.isReady)
+      .toList(growable: false);
+}
 
 class StoryMetadata {
   final StorySourceType sourceType;
@@ -43,6 +123,10 @@ class StoryMetadata {
         return 'Google Drive';
       case StorySourceType.mangaDexChapter:
         return 'MangaDex';
+      case StorySourceType.nHentaiGallery:
+        return 'NHentai';
+      case StorySourceType.hitomiGallery:
+        return 'Hitomi';
       case StorySourceType.singlePage:
         return 'Single Page';
     }
@@ -746,6 +830,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final TextEditingController driveLinkController = TextEditingController();
   final TextEditingController mangaDexLinkController = TextEditingController();
+  StorySourceType selectedSourceType = StorySourceType.driveFolder;
   bool isOpening = false;
 
   @override
@@ -765,10 +850,12 @@ class _HomePageState extends State<HomePage> {
 
     if (savedMangaDexLink != null && savedMangaDexLink.isNotEmpty) {
       mangaDexLinkController.text = savedMangaDexLink;
+      selectedSourceType = StorySourceType.mangaDexChapter;
     } else if (fallbackLink != null &&
         fallbackLink.isNotEmpty &&
         isMangaDexChapterLink(fallbackLink)) {
       mangaDexLinkController.text = fallbackLink;
+      selectedSourceType = StorySourceType.mangaDexChapter;
     }
   }
 
@@ -779,26 +866,66 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
+  TextEditingController _controllerForSource(StorySourceType sourceType) {
+    return switch (sourceType) {
+      StorySourceType.mangaDexChapter => mangaDexLinkController,
+      StorySourceType.driveFolder ||
+      StorySourceType.singlePage ||
+      StorySourceType.nHentaiGallery ||
+      StorySourceType.hitomiGallery => driveLinkController,
+    };
+  }
+
+  void _selectSource(StorySourceType sourceType) {
+    final definition = sourceDefinitionFor(sourceType);
+
+    if (!definition.isReady) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${definition.label} adapter is planned.')),
+      );
+      return;
+    }
+
+    setState(() {
+      selectedSourceType = sourceType;
+    });
+  }
+
+  void _showSourceHub() {
+    showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _SourceHubSheet(
+        selectedSourceType: selectedSourceType,
+        onSelectSource: (sourceType) {
+          Navigator.pop(context);
+          _selectSource(sourceType);
+        },
+      ),
+    );
+  }
+
   Future<void> _openReader(StorySourceType requestedSourceType) async {
     if (isOpening) {
       return;
     }
 
-    final link = switch (requestedSourceType) {
-      StorySourceType.mangaDexChapter => mangaDexLinkController.text.trim(),
-      StorySourceType.driveFolder ||
-      StorySourceType.singlePage => driveLinkController.text.trim(),
-    };
+    final definition = sourceDefinitionFor(requestedSourceType);
+
+    if (!definition.isReady) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${definition.label} adapter is planned.')),
+      );
+      return;
+    }
+
+    final link = _controllerForSource(requestedSourceType).text.trim();
 
     if (link.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            requestedSourceType == StorySourceType.mangaDexChapter
-                ? 'Paste a MangaDex chapter link first.'
-                : 'Paste a Google Drive link first.',
-          ),
-        ),
+        SnackBar(content: Text('Paste a ${definition.label} link first.')),
       );
       return;
     }
@@ -957,21 +1084,26 @@ class _HomePageState extends State<HomePage> {
                     const SizedBox(height: 8),
                     const _KevDexHeader(),
                     const SizedBox(height: 22),
-                    _SourceInputPanel(
+                    _SourceHubPanel(
+                      selectedSourceType: selectedSourceType,
                       driveController: driveLinkController,
                       mangaDexController: mangaDexLinkController,
                       isOpening: isOpening,
-                      onOpenDrive: () =>
-                          _openReader(StorySourceType.driveFolder),
-                      onOpenMangaDex: () =>
-                          _openReader(StorySourceType.mangaDexChapter),
-                      onClearDrive: () {
-                        driveLinkController.clear();
-                        unawaited(KevDexMemory.saveLastDriveLink(''));
-                      },
-                      onClearMangaDex: () {
-                        mangaDexLinkController.clear();
-                        unawaited(KevDexMemory.saveLastMangaDexLink(''));
+                      onSelectSource: _selectSource,
+                      onShowSourceHub: _showSourceHub,
+                      onOpen: () => _openReader(selectedSourceType),
+                      onClear: () {
+                        final controller = _controllerForSource(
+                          selectedSourceType,
+                        );
+                        controller.clear();
+
+                        if (selectedSourceType ==
+                            StorySourceType.mangaDexChapter) {
+                          unawaited(KevDexMemory.saveLastMangaDexLink(''));
+                        } else {
+                          unawaited(KevDexMemory.saveLastDriveLink(''));
+                        }
                       },
                     ),
                     const SizedBox(height: 22),
@@ -1422,27 +1554,35 @@ class _KevDexLogo extends StatelessWidget {
   }
 }
 
-class _SourceInputPanel extends StatelessWidget {
+class _SourceHubPanel extends StatelessWidget {
+  final StorySourceType selectedSourceType;
   final TextEditingController driveController;
   final TextEditingController mangaDexController;
   final bool isOpening;
-  final VoidCallback onOpenDrive;
-  final VoidCallback onOpenMangaDex;
-  final VoidCallback onClearDrive;
-  final VoidCallback onClearMangaDex;
+  final ValueChanged<StorySourceType> onSelectSource;
+  final VoidCallback onShowSourceHub;
+  final VoidCallback onOpen;
+  final VoidCallback onClear;
 
-  const _SourceInputPanel({
+  const _SourceHubPanel({
+    required this.selectedSourceType,
     required this.driveController,
     required this.mangaDexController,
     required this.isOpening,
-    required this.onOpenDrive,
-    required this.onOpenMangaDex,
-    required this.onClearDrive,
-    required this.onClearMangaDex,
+    required this.onSelectSource,
+    required this.onShowSourceHub,
+    required this.onOpen,
+    required this.onClear,
   });
 
   @override
   Widget build(BuildContext context) {
+    final selectedDefinition = sourceDefinitionFor(selectedSourceType);
+    final selectedController =
+        selectedSourceType == StorySourceType.mangaDexChapter
+        ? mangaDexController
+        : driveController;
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -1453,28 +1593,266 @@ class _SourceInputPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _SourceLinkField(
-            label: 'Google Drive',
-            hintText: 'Paste Google Drive folder or image link',
-            icon: Icons.cloud_queue_rounded,
-            controller: driveController,
-            isOpening: isOpening,
-            openTooltip: 'Open Google Drive',
-            onOpen: onOpenDrive,
-            onClear: onClearDrive,
+          Row(
+            children: [
+              const Icon(Icons.account_tree_rounded, color: _primaryAccent),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Source Hub',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Manage sources',
+                icon: const Icon(Icons.tune_rounded),
+                color: _primaryAccent,
+                onPressed: onShowSourceHub,
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final definition in readyStorySources)
+                FilterChip(
+                  selected: selectedSourceType == definition.type,
+                  label: Text(definition.label),
+                  avatar: Icon(definition.icon, size: 17),
+                  onSelected: isOpening
+                      ? null
+                      : (_) {
+                          onSelectSource(definition.type);
+                        },
+                  backgroundColor: _fieldColor,
+                  selectedColor: _primaryAccent,
+                  checkmarkColor: const Color(0xFF101016),
+                  side: const BorderSide(color: Color(0xFF393745)),
+                  labelStyle: TextStyle(
+                    color: selectedSourceType == definition.type
+                        ? const Color(0xFF101016)
+                        : _mutedText,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
           _SourceLinkField(
-            label: 'MangaDex',
-            hintText: 'Paste MangaDex chapter link',
-            icon: Icons.public_rounded,
-            controller: mangaDexController,
+            label: selectedDefinition.label,
+            hintText: selectedDefinition.hintText,
+            icon: selectedDefinition.icon,
+            controller: selectedController,
             isOpening: isOpening,
-            openTooltip: 'Open MangaDex',
-            onOpen: onOpenMangaDex,
-            onClear: onClearMangaDex,
+            openTooltip: 'Open ${selectedDefinition.label}',
+            onOpen: onOpen,
+            onClear: onClear,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SourceHubSheet extends StatelessWidget {
+  final StorySourceType selectedSourceType;
+  final ValueChanged<StorySourceType> onSelectSource;
+
+  const _SourceHubSheet({
+    required this.selectedSourceType,
+    required this.onSelectSource,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.paddingOf(context).bottom;
+
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: Container(
+        width: double.infinity,
+        constraints: const BoxConstraints(maxWidth: 520),
+        margin: const EdgeInsets.all(12),
+        padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + bottomPadding),
+        decoration: BoxDecoration(
+          color: const Color(0xF01A1A22),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFF2F2D39)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x88000000),
+              blurRadius: 28,
+              offset: Offset(0, 16),
+            ),
+          ],
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.account_tree_rounded, color: _primaryAccent),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'Source Hub',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Close',
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              const _SourceHubSectionTitle(label: 'Ready'),
+              const SizedBox(height: 8),
+              for (final definition in readyStorySources) ...[
+                _SourceHubTile(
+                  definition: definition,
+                  selected: selectedSourceType == definition.type,
+                  onTap: () => onSelectSource(definition.type),
+                ),
+                if (definition != readyStorySources.last)
+                  const SizedBox(height: 10),
+              ],
+              if (plannedStorySources.isNotEmpty) ...[
+                const SizedBox(height: 18),
+                const _SourceHubSectionTitle(label: 'Planned'),
+                const SizedBox(height: 8),
+                for (final definition in plannedStorySources) ...[
+                  _SourceHubTile(
+                    definition: definition,
+                    selected: false,
+                    enabled: false,
+                    onTap: () {},
+                  ),
+                  if (definition != plannedStorySources.last)
+                    const SizedBox(height: 10),
+                ],
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SourceHubSectionTitle extends StatelessWidget {
+  final String label;
+
+  const _SourceHubSectionTitle({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      label,
+      style: const TextStyle(
+        color: _mutedText,
+        fontSize: 12,
+        fontWeight: FontWeight.w900,
+      ),
+    );
+  }
+}
+
+class _SourceHubTile extends StatelessWidget {
+  final StorySourceDefinition definition;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  const _SourceHubTile({
+    required this.definition,
+    required this.selected,
+    required this.onTap,
+    this.enabled = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final foregroundColor = enabled ? Colors.white : _mutedText;
+    final statusLabel = enabled
+        ? (selected ? 'Selected' : 'Ready')
+        : (definition.privateSource ? 'Private' : 'Soon');
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(8),
+        child: Ink(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFF25342E) : _fieldColor,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: selected ? _primaryAccent : const Color(0xFF393745),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: enabled ? _surfaceColor : const Color(0xFF17171F),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  definition.icon,
+                  color: enabled ? _primaryAccent : const Color(0xFF6F6D7B),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  definition.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: foregroundColor,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                decoration: BoxDecoration(
+                  color: selected ? _primaryAccent : const Color(0xFF252431),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  statusLabel,
+                  style: TextStyle(
+                    color: selected ? const Color(0xFF101016) : _mutedText,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
