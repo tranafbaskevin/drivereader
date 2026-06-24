@@ -31,6 +31,7 @@ enum StorySourceStatus { ready, planned }
 enum StorySourceType {
   driveFolder,
   mangaDexChapter,
+  hentai2ReadChapter,
   nHentaiGallery,
   hitomiGallery,
   singlePage,
@@ -70,6 +71,14 @@ const List<StorySourceDefinition> storySourceDefinitions = [
     hintText: 'Paste MangaDex chapter link',
     icon: Icons.public_rounded,
     status: StorySourceStatus.ready,
+  ),
+  StorySourceDefinition(
+    type: StorySourceType.hentai2ReadChapter,
+    label: 'Hentai2Read',
+    hintText: 'Paste Hentai2Read story or chapter link',
+    icon: Icons.auto_stories_rounded,
+    status: StorySourceStatus.ready,
+    privateSource: true,
   ),
   StorySourceDefinition(
     type: StorySourceType.nHentaiGallery,
@@ -153,6 +162,8 @@ class StoryMetadata {
         return 'Google Drive';
       case StorySourceType.mangaDexChapter:
         return 'MangaDex';
+      case StorySourceType.hentai2ReadChapter:
+        return 'Hentai2Read';
       case StorySourceType.nHentaiGallery:
         return 'NHentai';
       case StorySourceType.hitomiGallery:
@@ -352,6 +363,53 @@ class HitomiGalleryPreview {
     required this.pageCount,
     this.language,
   });
+}
+
+class Hentai2ReadStoryPreview {
+  final String slug;
+  final String title;
+  final String sourceLink;
+  final String? thumbnailUrl;
+  final String? description;
+
+  const Hentai2ReadStoryPreview({
+    required this.slug,
+    required this.title,
+    required this.sourceLink,
+    this.thumbnailUrl,
+    this.description,
+  });
+}
+
+class Hentai2ReadChapterPreview {
+  final String chapterId;
+  final String sourceLink;
+  final String title;
+  final String? chapterLabel;
+  final String? thumbnailUrl;
+
+  const Hentai2ReadChapterPreview({
+    required this.chapterId,
+    required this.sourceLink,
+    required this.title,
+    this.chapterLabel,
+    this.thumbnailUrl,
+  });
+
+  StoryMetadata get metadata {
+    return StoryMetadata(
+      sourceType: StorySourceType.hentai2ReadChapter,
+      title: title,
+      chapterLabel: chapterLabel,
+    );
+  }
+}
+
+class Hentai2ReadStoryDetail {
+  final Hentai2ReadStoryPreview story;
+  final List<Hentai2ReadChapterPreview> chapters;
+
+  const Hentai2ReadStoryDetail({required this.story, required this.chapters});
 }
 
 class MangaDexChapterPreview {
@@ -759,6 +817,7 @@ class KevDexMemory {
   static const String _lastMangaDexLinkKey = 'kevdex.lastMangaDexLink';
   static const String _lastNHentaiLinkKey = 'kevdex.lastNHentaiLink';
   static const String _lastHitomiLinkKey = 'kevdex.lastHitomiLink';
+  static const String _lastHentai2ReadLinkKey = 'kevdex.lastHentai2ReadLink';
   static const String _readerProgressKey = 'kevdex.readerProgress';
   static const String _libraryKey = 'kevdex.library';
   static const String _uiBackgroundKey = 'kevdex.uiBackground';
@@ -773,6 +832,7 @@ class KevDexMemory {
   static String? lastMangaDexLink;
   static String? lastNHentaiLink;
   static String? lastHitomiLink;
+  static String? lastHentai2ReadLink;
 
   const KevDexMemory._();
 
@@ -783,6 +843,7 @@ class KevDexMemory {
     lastMangaDexLink = preferences.getString(_lastMangaDexLinkKey);
     lastNHentaiLink = preferences.getString(_lastNHentaiLinkKey);
     lastHitomiLink = preferences.getString(_lastHitomiLinkKey);
+    lastHentai2ReadLink = preferences.getString(_lastHentai2ReadLinkKey);
     _restoreReadingProgress(preferences);
     _restoreLibrary(preferences);
     _restoreUiBackground(preferences);
@@ -858,6 +919,20 @@ class KevDexMemory {
 
     lastHitomiLink = cleanedLink;
     await preferences.setString(_lastHitomiLinkKey, cleanedLink);
+  }
+
+  static Future<void> saveLastHentai2ReadLink(String link) async {
+    final cleanedLink = link.trim();
+    final preferences = await _loadPreferences();
+
+    if (cleanedLink.isEmpty) {
+      await preferences.remove(_lastHentai2ReadLinkKey);
+      lastHentai2ReadLink = null;
+      return;
+    }
+
+    lastHentai2ReadLink = cleanedLink;
+    await preferences.setString(_lastHentai2ReadLinkKey, cleanedLink);
   }
 
   static Future<void> saveReadingProgress(ReadingProgress progress) async {
@@ -950,6 +1025,7 @@ class KevDexMemory {
       preferences.remove(_lastMangaDexLinkKey),
       preferences.remove(_lastNHentaiLinkKey),
       preferences.remove(_lastHitomiLinkKey),
+      preferences.remove(_lastHentai2ReadLinkKey),
       preferences.remove(_readerProgressKey),
       preferences.remove(_libraryKey),
       preferences.remove(_uiBackgroundKey),
@@ -962,6 +1038,7 @@ class KevDexMemory {
     lastMangaDexLink = null;
     lastNHentaiLink = null;
     lastHitomiLink = null;
+    lastHentai2ReadLink = null;
     readingProgressNotifier.value = null;
     libraryNotifier.value = const <LibraryItem>[];
     uiBackgroundNotifier.value = defaultUiBackground;
@@ -1244,6 +1321,8 @@ class _HomePageState extends State<HomePage> {
   final TextEditingController mangaDexLinkController = TextEditingController();
   final TextEditingController nHentaiLinkController = TextEditingController();
   final TextEditingController hitomiLinkController = TextEditingController();
+  final TextEditingController hentai2ReadLinkController =
+      TextEditingController();
   StorySourceType selectedSourceType = StorySourceType.driveFolder;
   bool isOpening = false;
 
@@ -1254,6 +1333,7 @@ class _HomePageState extends State<HomePage> {
     final savedMangaDexLink = KevDexMemory.lastMangaDexLink;
     final savedNHentaiLink = KevDexMemory.lastNHentaiLink;
     final savedHitomiLink = KevDexMemory.lastHitomiLink;
+    final savedHentai2ReadLink = KevDexMemory.lastHentai2ReadLink;
     final fallbackLink = KevDexMemory.lastLink;
 
     if (savedDriveLink != null && savedDriveLink.isNotEmpty) {
@@ -1281,6 +1361,10 @@ class _HomePageState extends State<HomePage> {
     if (savedHitomiLink != null && savedHitomiLink.isNotEmpty) {
       hitomiLinkController.text = savedHitomiLink;
     }
+
+    if (savedHentai2ReadLink != null && savedHentai2ReadLink.isNotEmpty) {
+      hentai2ReadLinkController.text = savedHentai2ReadLink;
+    }
   }
 
   @override
@@ -1289,12 +1373,14 @@ class _HomePageState extends State<HomePage> {
     mangaDexLinkController.dispose();
     nHentaiLinkController.dispose();
     hitomiLinkController.dispose();
+    hentai2ReadLinkController.dispose();
     super.dispose();
   }
 
   TextEditingController _controllerForSource(StorySourceType sourceType) {
     return switch (sourceType) {
       StorySourceType.mangaDexChapter => mangaDexLinkController,
+      StorySourceType.hentai2ReadChapter => hentai2ReadLinkController,
       StorySourceType.nHentaiGallery => nHentaiLinkController,
       StorySourceType.hitomiGallery => hitomiLinkController,
       StorySourceType.driveFolder ||
@@ -1349,6 +1435,7 @@ class _HomePageState extends State<HomePage> {
     mangaDexLinkController.clear();
     nHentaiLinkController.clear();
     hitomiLinkController.clear();
+    hentai2ReadLinkController.clear();
 
     if (!mounted) {
       return;
@@ -1418,11 +1505,22 @@ class _HomePageState extends State<HomePage> {
     final mangaDexChapterId = extractMangaDexChapterId(link);
     final nHentaiGalleryId = extractNHentaiGalleryId(link);
     final hitomiGalleryId = extractHitomiGalleryId(link);
+    final hentai2ReadTarget = extractHentai2ReadTarget(link);
 
     if (requestedSourceType == StorySourceType.mangaDexChapter &&
         mangaDexChapterId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Paste a MangaDex chapter link.')),
+      );
+      return;
+    }
+
+    if (requestedSourceType == StorySourceType.hentai2ReadChapter &&
+        hentai2ReadTarget == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Paste a valid Hentai2Read story or chapter link.'),
+        ),
       );
       return;
     }
@@ -1471,6 +1569,9 @@ class _HomePageState extends State<HomePage> {
       case StorySourceType.mangaDexChapter:
         await KevDexMemory.saveLastMangaDexLink(link);
         break;
+      case StorySourceType.hentai2ReadChapter:
+        await KevDexMemory.saveLastHentai2ReadLink(link);
+        break;
       case StorySourceType.nHentaiGallery:
         await KevDexMemory.saveLastNHentaiLink(link);
         break;
@@ -1492,6 +1593,11 @@ class _HomePageState extends State<HomePage> {
           mangaDexChapterId != null) {
         images = await fetchMangaDexChapterImages(mangaDexChapterId);
         metadata = await fetchMangaDexChapterMetadata(mangaDexChapterId);
+      } else if (requestedSourceType == StorySourceType.hentai2ReadChapter) {
+        final result = await fetchHentai2ReadStory(link);
+        images = result.images;
+        metadata = result.metadata;
+        loadErrorMessage = result.errorMessage;
       } else if (requestedSourceType == StorySourceType.nHentaiGallery) {
         final result = await fetchNHentaiGallery(link);
         images = result.images;
@@ -1600,6 +1706,20 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  void _openHentai2ReadHome() {
+    if (!privateSourceSettingsNotifier.value.isAccepted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enable Private Sources first.')),
+      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const Hentai2ReadHomePage()),
+    );
+  }
+
   void _openHitomiHome() {
     if (!privateSourceSettingsNotifier.value.isAccepted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1652,11 +1772,13 @@ class _HomePageState extends State<HomePage> {
                       mangaDexController: mangaDexLinkController,
                       nHentaiController: nHentaiLinkController,
                       hitomiController: hitomiLinkController,
+                      hentai2ReadController: hentai2ReadLinkController,
                       isOpening: isOpening,
                       onSelectSource: _selectSource,
                       onShowSourceHub: _showSourceHub,
                       onOpenMangaDexHome: _openMangaDexHome,
                       onOpenHitomiHome: _openHitomiHome,
+                      onOpenHentai2ReadHome: _openHentai2ReadHome,
                       onOpen: () => _openReader(selectedSourceType),
                       onClear: () {
                         final controller = _controllerForSource(
@@ -1667,6 +1789,9 @@ class _HomePageState extends State<HomePage> {
                         switch (selectedSourceType) {
                           case StorySourceType.mangaDexChapter:
                             unawaited(KevDexMemory.saveLastMangaDexLink(''));
+                            break;
+                          case StorySourceType.hentai2ReadChapter:
+                            unawaited(KevDexMemory.saveLastHentai2ReadLink(''));
                             break;
                           case StorySourceType.nHentaiGallery:
                             unawaited(KevDexMemory.saveLastNHentaiLink(''));
@@ -2069,7 +2194,7 @@ class _KevDexHeader extends StatelessWidget {
         ),
         const SizedBox(height: 14),
         const Text(
-          'Google Drive / MangaDex Reader',
+          'Google Drive / MangaDex / Hentai2Read Reader',
           textAlign: TextAlign.center,
           style: TextStyle(
             color: _mutedText,
@@ -2136,11 +2261,13 @@ class _SourceHubPanel extends StatelessWidget {
   final TextEditingController mangaDexController;
   final TextEditingController nHentaiController;
   final TextEditingController hitomiController;
+  final TextEditingController hentai2ReadController;
   final bool isOpening;
   final ValueChanged<StorySourceType> onSelectSource;
   final VoidCallback onShowSourceHub;
   final VoidCallback onOpenMangaDexHome;
   final VoidCallback onOpenHitomiHome;
+  final VoidCallback onOpenHentai2ReadHome;
   final VoidCallback onOpen;
   final VoidCallback onClear;
 
@@ -2150,11 +2277,13 @@ class _SourceHubPanel extends StatelessWidget {
     required this.mangaDexController,
     required this.nHentaiController,
     required this.hitomiController,
+    required this.hentai2ReadController,
     required this.isOpening,
     required this.onSelectSource,
     required this.onShowSourceHub,
     required this.onOpenMangaDexHome,
     required this.onOpenHitomiHome,
+    required this.onOpenHentai2ReadHome,
     required this.onOpen,
     required this.onClear,
   });
@@ -2283,6 +2412,25 @@ class _SourceHubPanel extends StatelessWidget {
             ),
             const SizedBox(height: 14),
           ],
+          if (selectedSourceType == StorySourceType.hentai2ReadChapter) ...[
+            Tooltip(
+              message: 'Open Hentai2Read Home',
+              child: OutlinedButton.icon(
+                onPressed: isOpening ? null : onOpenHentai2ReadHome,
+                icon: const Icon(Icons.auto_stories_rounded),
+                label: const Text('Hentai2Read Home'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _primaryAccent,
+                  side: const BorderSide(color: Color(0xFF3C6F60)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+          ],
           if (selectedSourceType == StorySourceType.hitomiGallery) ...[
             Tooltip(
               message: 'Open Hitomi Home',
@@ -2320,6 +2468,7 @@ class _SourceHubPanel extends StatelessWidget {
   TextEditingController _controllerForSource(StorySourceType sourceType) {
     return switch (sourceType) {
       StorySourceType.mangaDexChapter => mangaDexController,
+      StorySourceType.hentai2ReadChapter => hentai2ReadController,
       StorySourceType.nHentaiGallery => nHentaiController,
       StorySourceType.hitomiGallery => hitomiController,
       StorySourceType.driveFolder ||
@@ -3388,7 +3537,8 @@ class _LibraryItemCard extends StatelessWidget {
 }
 
 class MangaDexHomePage extends StatefulWidget {
-  final Future<List<MangaDexMangaPreview>> Function({int limit, int offset})? mangaLoader;
+  final Future<List<MangaDexMangaPreview>> Function({int limit, int offset})?
+  mangaLoader;
 
   const MangaDexHomePage({super.key, this.mangaLoader});
 
@@ -3594,8 +3744,9 @@ class _MangaDexHomePageState extends State<MangaDexHomePage> {
                                 height: 24,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2.5,
-                                  valueColor:
-                                      AlwaysStoppedAnimation<Color>(_primaryAccent),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    _primaryAccent,
+                                  ),
                                 ),
                               ),
                             ),
@@ -3624,10 +3775,7 @@ class _MangaDexMangaCard extends StatelessWidget {
   final MangaDexMangaPreview manga;
   final VoidCallback onOpen;
 
-  const _MangaDexMangaCard({
-    required this.manga,
-    required this.onOpen,
-  });
+  const _MangaDexMangaCard({required this.manga, required this.onOpen});
 
   @override
   Widget build(BuildContext context) {
@@ -3729,7 +3877,8 @@ class MangaDexMangaDetailPage extends StatefulWidget {
   const MangaDexMangaDetailPage({super.key, required this.manga});
 
   @override
-  State<MangaDexMangaDetailPage> createState() => _MangaDexMangaDetailPageState();
+  State<MangaDexMangaDetailPage> createState() =>
+      _MangaDexMangaDetailPageState();
 }
 
 class _MangaDexMangaDetailPageState extends State<MangaDexMangaDetailPage> {
@@ -3745,7 +3894,9 @@ class _MangaDexMangaDetailPageState extends State<MangaDexMangaDetailPage> {
 
   Future<List<MangaDexChapterPreview>> _loadChapters() {
     return fetchMangaDexMangaChapters(widget.manga.mangaId).then((chapters) {
-      return chapters.map((c) => c.copyWith(thumbnailUrl: widget.manga.thumbnailUrl)).toList();
+      return chapters
+          .map((c) => c.copyWith(thumbnailUrl: widget.manga.thumbnailUrl))
+          .toList();
     });
   }
 
@@ -3765,7 +3916,9 @@ class _MangaDexMangaDetailPageState extends State<MangaDexMangaDetailPage> {
     });
 
     List<DriveImage> images = const <DriveImage>[];
-    StoryMetadata metadata = chapter.metadata.copyWith(title: widget.manga.title);
+    StoryMetadata metadata = chapter.metadata.copyWith(
+      title: widget.manga.title,
+    );
     String? errorMessage;
 
     try {
@@ -3990,16 +4143,20 @@ class _MangaDexMangaDetailPageState extends State<MangaDexMangaDetailPage> {
                                   child: TextButton(
                                     onPressed: () {
                                       setState(() {
-                                        isDescriptionExpanded = !isDescriptionExpanded;
+                                        isDescriptionExpanded =
+                                            !isDescriptionExpanded;
                                       });
                                     },
                                     style: TextButton.styleFrom(
                                       padding: EdgeInsets.zero,
                                       minimumSize: const Size(50, 30),
-                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
                                     ),
                                     child: Text(
-                                      isDescriptionExpanded ? 'Show Less' : 'Read More',
+                                      isDescriptionExpanded
+                                          ? 'Show Less'
+                                          : 'Read More',
                                       style: const TextStyle(
                                         color: _primaryAccent,
                                         fontSize: 12,
@@ -4025,7 +4182,8 @@ class _MangaDexMangaDetailPageState extends State<MangaDexMangaDetailPage> {
                       FutureBuilder<List<MangaDexChapterPreview>>(
                         future: chaptersFuture,
                         builder: (context, snapshot) {
-                          if (snapshot.connectionState != ConnectionState.done) {
+                          if (snapshot.connectionState !=
+                              ConnectionState.done) {
                             return const Padding(
                               padding: EdgeInsets.symmetric(vertical: 40),
                               child: _MangaLoadingState(),
@@ -4040,13 +4198,15 @@ class _MangaDexMangaDetailPageState extends State<MangaDexMangaDetailPage> {
                             );
                           }
 
-                          final chapters = snapshot.data ?? const <MangaDexChapterPreview>[];
+                          final chapters =
+                              snapshot.data ?? const <MangaDexChapterPreview>[];
 
                           if (chapters.isEmpty) {
                             return const _ReaderMessageState(
                               icon: Icons.menu_book_rounded,
                               title: 'No chapters available.',
-                              message: 'This manga might not have any chapters in English.',
+                              message:
+                                  'This manga might not have any chapters in English.',
                             );
                           }
 
@@ -4061,7 +4221,8 @@ class _MangaDexMangaDetailPageState extends State<MangaDexMangaDetailPage> {
                               final chapter = chapters[index];
                               return _MangaDexDetailChapterCard(
                                 chapter: chapter,
-                                isOpening: openingChapterId == chapter.chapterId,
+                                isOpening:
+                                    openingChapterId == chapter.chapterId,
                                 onOpen: () => _openChapter(chapter),
                               );
                             },
@@ -4136,6 +4297,614 @@ class _MangaDexDetailChapterCard extends StatelessWidget {
                         ),
                       ),
                     ],
+                  ],
+                ),
+              ),
+              if (isOpening)
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(_primaryAccent),
+                  ),
+                )
+              else
+                const Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  color: _primaryAccent,
+                  size: 14,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class Hentai2ReadHomePage extends StatefulWidget {
+  final Future<List<Hentai2ReadStoryPreview>> Function({int page})? storyLoader;
+
+  const Hentai2ReadHomePage({super.key, this.storyLoader});
+
+  @override
+  State<Hentai2ReadHomePage> createState() => _Hentai2ReadHomePageState();
+}
+
+class _Hentai2ReadHomePageState extends State<Hentai2ReadHomePage> {
+  final ScrollController _scrollController = ScrollController();
+  final List<Hentai2ReadStoryPreview> _stories = [];
+  bool _isLoading = false;
+  bool _isLoadingMore = false;
+  bool _hasMore = true;
+  String? _errorMessage;
+  int _page = 1;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInitialStories();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadInitialStories() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+      _stories.clear();
+      _page = 1;
+      _hasMore = true;
+    });
+
+    try {
+      final loader = widget.storyLoader;
+      final list = loader == null
+          ? await fetchHentai2ReadHomeStories(page: _page)
+          : await loader(page: _page);
+
+      setState(() {
+        _stories.addAll(list);
+        _isLoading = false;
+        if (list.isEmpty) {
+          _hasMore = false;
+        }
+      });
+    } catch (_) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Could not load Hentai2Read Home.';
+      });
+    }
+  }
+
+  Future<void> _loadMoreStories() async {
+    if (_isLoadingMore || !_hasMore) return;
+
+    setState(() {
+      _isLoadingMore = true;
+    });
+
+    try {
+      final nextPage = _page + 1;
+      final loader = widget.storyLoader;
+      final list = loader == null
+          ? await fetchHentai2ReadHomeStories(page: nextPage)
+          : await loader(page: nextPage);
+
+      setState(() {
+        _page = nextPage;
+        _stories.addAll(list);
+        _isLoadingMore = false;
+        if (list.isEmpty) {
+          _hasMore = false;
+        }
+      });
+    } catch (_) {
+      setState(() {
+        _isLoadingMore = false;
+      });
+    }
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+    if (currentScroll >= maxScroll * 0.9) {
+      _loadMoreStories();
+    }
+  }
+
+  void _openStory(Hentai2ReadStoryPreview story) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Hentai2ReadStoryDetailPage(story: story),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _KevDexBackground(
+        overlayOpacity: 0.86,
+        child: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 10, 16, 12),
+                child: Row(
+                  children: [
+                    IconButton(
+                      tooltip: 'Back',
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      color: Colors.white,
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                    const SizedBox(width: 4),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Hentai2Read Home',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          SizedBox(height: 3),
+                          Text(
+                            'Latest Stories',
+                            style: TextStyle(
+                              color: _mutedText,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Refresh Hentai2Read Home',
+                      icon: const Icon(Icons.refresh_rounded),
+                      color: _primaryAccent,
+                      onPressed: _loadInitialStories,
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Builder(
+                  builder: (context) {
+                    if (_isLoading) {
+                      return const _MangaLoadingState();
+                    }
+
+                    if (_errorMessage != null && _stories.isEmpty) {
+                      return _ReaderMessageState(
+                        icon: Icons.auto_stories_rounded,
+                        title: _errorMessage!,
+                        message: 'Refresh or check the network.',
+                      );
+                    }
+
+                    if (_stories.isEmpty) {
+                      return const _ReaderMessageState(
+                        icon: Icons.auto_stories_rounded,
+                        title: 'No Hentai2Read stories found.',
+                        message: 'Refresh or check the network.',
+                      );
+                    }
+
+                    return ListView.separated(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                      itemCount: _stories.length + (_hasMore ? 1 : 0),
+                      separatorBuilder: (context, index) =>
+                          const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        if (index >= _stories.length) {
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 20),
+                            child: Center(
+                              child: SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    _primaryAccent,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }
+
+                        final story = _stories[index];
+                        return _Hentai2ReadStoryCard(
+                          story: story,
+                          onOpen: () => _openStory(story),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Hentai2ReadStoryCard extends StatelessWidget {
+  final Hentai2ReadStoryPreview story;
+  final VoidCallback onOpen;
+
+  const _Hentai2ReadStoryCard({required this.story, required this.onOpen});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onOpen,
+        borderRadius: BorderRadius.circular(8),
+        child: Ink(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: _glassSurfaceColor,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFF2F2D39)),
+          ),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: SizedBox(
+                  width: 64,
+                  height: 86,
+                  child: story.thumbnailUrl == null
+                      ? const _ThumbnailPlaceholder()
+                      : _PrivateThumbnailFrame(
+                          isPrivate: true,
+                          child: CachedNetworkImage(
+                            imageUrl: story.thumbnailUrl!,
+                            httpHeaders: _readerImageRequestHeaders(
+                              story.thumbnailUrl!,
+                            ),
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) =>
+                                const _ThumbnailPlaceholder(),
+                            errorWidget: (context, url, error) =>
+                                const _ThumbnailPlaceholder(),
+                          ),
+                        ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      story.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    if (story.description != null) ...[
+                      const SizedBox(height: 7),
+                      Text(
+                        story.description!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _mutedText,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 7),
+                    const Text(
+                      'Hentai2Read',
+                      style: TextStyle(
+                        color: _primaryAccent,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.arrow_forward_rounded, color: _primaryAccent),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class Hentai2ReadStoryDetailPage extends StatefulWidget {
+  final Hentai2ReadStoryPreview story;
+
+  const Hentai2ReadStoryDetailPage({super.key, required this.story});
+
+  @override
+  State<Hentai2ReadStoryDetailPage> createState() =>
+      _Hentai2ReadStoryDetailPageState();
+}
+
+class _Hentai2ReadStoryDetailPageState
+    extends State<Hentai2ReadStoryDetailPage> {
+  late Future<Hentai2ReadStoryDetail> detailFuture;
+  String? openingChapterId;
+
+  @override
+  void initState() {
+    super.initState();
+    detailFuture = fetchHentai2ReadStoryDetail(widget.story.sourceLink);
+  }
+
+  void _refresh() {
+    setState(() {
+      detailFuture = fetchHentai2ReadStoryDetail(widget.story.sourceLink);
+    });
+  }
+
+  Future<void> _openChapter(Hentai2ReadChapterPreview chapter) async {
+    if (openingChapterId != null) {
+      return;
+    }
+
+    setState(() {
+      openingChapterId = chapter.chapterId;
+    });
+
+    StoryFetchResult? result;
+    String? errorMessage;
+
+    try {
+      result = await fetchHentai2ReadStory(chapter.sourceLink);
+    } catch (_) {
+      errorMessage = 'Hentai2Read chapter could not be reached.';
+    } finally {
+      if (mounted) {
+        setState(() {
+          openingChapterId = null;
+        });
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    if (result == null || result.images.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            errorMessage ??
+                result?.errorMessage ??
+                'Hentai2Read did not return readable pages.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    await KevDexMemory.saveLastLink(chapter.sourceLink);
+    await KevDexMemory.saveLastHentai2ReadLink(chapter.sourceLink);
+
+    final progress = ReadingProgress(
+      sourceLink: chapter.sourceLink,
+      images: List<DriveImage>.unmodifiable(result.images),
+      pageIndex: 0,
+      metadata: result.metadata,
+    );
+
+    readingProgressNotifier.value = progress;
+    unawaited(KevDexMemory.saveReadingProgress(progress));
+
+    if (!mounted) {
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ReaderPage(
+          link: chapter.sourceLink,
+          images: result!.images,
+          initialIndex: 0,
+          startInGallery: false,
+          metadata: result.metadata,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _KevDexBackground(
+        overlayOpacity: 0.88,
+        child: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 10, 16, 12),
+                child: Row(
+                  children: [
+                    IconButton(
+                      tooltip: 'Back',
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      color: Colors.white,
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                    const SizedBox(width: 4),
+                    const Expanded(
+                      child: Text(
+                        'Hentai2Read Details',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Refresh Chapters',
+                      icon: const Icon(Icons.refresh_rounded),
+                      color: _primaryAccent,
+                      onPressed: _refresh,
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: FutureBuilder<Hentai2ReadStoryDetail>(
+                  future: detailFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState != ConnectionState.done) {
+                      return const _MangaLoadingState();
+                    }
+
+                    if (snapshot.hasError || snapshot.data == null) {
+                      return const _ReaderMessageState(
+                        icon: Icons.auto_stories_rounded,
+                        title: 'Failed to load chapters.',
+                        message: 'Please try again.',
+                      );
+                    }
+
+                    final detail = snapshot.data!;
+                    final story = detail.story;
+
+                    return SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _Hentai2ReadStoryCard(story: story, onOpen: () {}),
+                          const SizedBox(height: 18),
+                          const Text(
+                            'Chapters',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          if (detail.chapters.isEmpty)
+                            const _ReaderMessageState(
+                              icon: Icons.auto_stories_rounded,
+                              title: 'No chapters available.',
+                              message: 'Try another story.',
+                            )
+                          else
+                            ListView.separated(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              padding: const EdgeInsets.only(bottom: 30),
+                              itemCount: detail.chapters.length,
+                              separatorBuilder: (context, index) =>
+                                  const SizedBox(height: 8),
+                              itemBuilder: (context, index) {
+                                final chapter = detail.chapters[index];
+                                return _Hentai2ReadChapterCard(
+                                  chapter: chapter,
+                                  isOpening:
+                                      openingChapterId == chapter.chapterId,
+                                  onOpen: () => _openChapter(chapter),
+                                );
+                              },
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Hentai2ReadChapterCard extends StatelessWidget {
+  final Hentai2ReadChapterPreview chapter;
+  final bool isOpening;
+  final VoidCallback onOpen;
+
+  const _Hentai2ReadChapterCard({
+    required this.chapter,
+    required this.isOpening,
+    required this.onOpen,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: isOpening ? null : onOpen,
+        borderRadius: BorderRadius.circular(8),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: _glassSurfaceColor,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFF2F2D39)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      chapter.chapterLabel ?? 'Chapter ${chapter.chapterId}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Hentai2Read',
+                      style: TextStyle(
+                        color: _mutedText,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -4276,7 +5045,12 @@ class _HitomiHomePageState extends State<HitomiHomePage> {
   }
 
   Future<void> _loadMoreGalleries() async {
-    if (_isLoadingMore || !_hasMore || _galleryIds.isEmpty || _routing == null) return;
+    if (_isLoadingMore ||
+        !_hasMore ||
+        _galleryIds.isEmpty ||
+        _routing == null) {
+      return;
+    }
 
     setState(() {
       _isLoadingMore = true;
@@ -4490,8 +5264,9 @@ class _HitomiHomePageState extends State<HitomiHomePage> {
                                 height: 24,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2.5,
-                                  valueColor:
-                                      AlwaysStoppedAnimation<Color>(_primaryAccent),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    _primaryAccent,
+                                  ),
                                 ),
                               ),
                             ),
@@ -5678,6 +6453,10 @@ bool isMangaDexChapterLink(String link) {
 }
 
 StorySourceType detectStorySource(String link) {
+  if (extractHentai2ReadTarget(link) != null) {
+    return StorySourceType.hentai2ReadChapter;
+  }
+
   if (extractNHentaiGalleryId(link) != null) {
     return StorySourceType.nHentaiGallery;
   }
@@ -5702,6 +6481,8 @@ bool _matchesRequestedPrivateSource(
   String link,
 ) {
   return switch (requestedSourceType) {
+    StorySourceType.hentai2ReadChapter =>
+      extractHentai2ReadTarget(link) != null,
     StorySourceType.nHentaiGallery => extractNHentaiGalleryId(link) != null,
     StorySourceType.hitomiGallery => extractHitomiGalleryId(link) != null,
     StorySourceType.driveFolder ||
@@ -5714,6 +6495,7 @@ bool _sourceNeedsFetchedPages(StorySourceType sourceType) {
   return switch (sourceType) {
     StorySourceType.driveFolder ||
     StorySourceType.mangaDexChapter ||
+    StorySourceType.hentai2ReadChapter ||
     StorySourceType.nHentaiGallery ||
     StorySourceType.hitomiGallery => true,
     StorySourceType.singlePage => false,
@@ -5749,6 +6531,538 @@ String? extractMangaDexChapterId(String link) {
   ).firstMatch(link.trim());
 
   return directIdMatch?.group(0);
+}
+
+String? extractHentai2ReadTarget(String link) {
+  final uri = _hentai2ReadUri(link);
+
+  if (uri == null) {
+    return null;
+  }
+
+  final segments = uri.pathSegments
+      .where((segment) => segment.trim().isNotEmpty)
+      .toList(growable: false);
+
+  if (segments.isEmpty) {
+    return null;
+  }
+
+  final slug = segments.first.trim();
+  if (slug == 'hentai-list' || slug == 'search' || slug == 'tag') {
+    return null;
+  }
+
+  if (segments.length >= 2 && RegExp(r'^\d+$').hasMatch(segments[1])) {
+    return '$slug/${segments[1]}';
+  }
+
+  return slug;
+}
+
+String? extractHentai2ReadStorySlug(String link) {
+  final target = extractHentai2ReadTarget(link);
+
+  if (target == null) {
+    return null;
+  }
+
+  return target.split('/').first;
+}
+
+String _hentai2ReadStoryLink(String slug) {
+  return 'https://hentai2read.com/$slug/';
+}
+
+String _hentai2ReadChapterLink(String slug, String chapterId) {
+  return 'https://hentai2read.com/$slug/$chapterId/';
+}
+
+Uri? _hentai2ReadUri(String link) {
+  final cleanedLink = link.trim();
+
+  if (cleanedLink.isEmpty) {
+    return null;
+  }
+
+  final directMatch = RegExp(
+    r'^(?:hentai2read|h2r):([a-zA-Z0-9_-]+)(?:/(\d+))?$',
+  ).firstMatch(cleanedLink);
+
+  if (directMatch != null) {
+    final slug = directMatch.group(1)!;
+    final chapterId = directMatch.group(2);
+    return Uri.https(
+      'hentai2read.com',
+      chapterId == null ? '/$slug/' : '/$slug/$chapterId/',
+    );
+  }
+
+  final normalized = cleanedLink.contains('://')
+      ? cleanedLink
+      : 'https://$cleanedLink';
+  final uri = Uri.tryParse(normalized);
+  final host = uri?.host.toLowerCase() ?? '';
+
+  if (uri == null || !host.contains('hentai2read.com')) {
+    return null;
+  }
+
+  return uri;
+}
+
+Future<List<Hentai2ReadStoryPreview>> fetchHentai2ReadHomeStories({
+  int page = 1,
+}) async {
+  try {
+    final safePage = page < 1 ? 1 : page;
+    final response = await http
+        .get(
+          Uri.https(
+            'hentai2read.com',
+            '/hentai-list/all/any/all/last-added/$safePage/',
+          ),
+          headers: _readerRequestHeaders('hentai2read.com'),
+        )
+        .timeout(_privateSourceRequestTimeout);
+
+    if (response.statusCode != 200) {
+      return const <Hentai2ReadStoryPreview>[];
+    }
+
+    return parseHentai2ReadHomePreviews(response.body);
+  } catch (_) {
+    return const <Hentai2ReadStoryPreview>[];
+  }
+}
+
+List<Hentai2ReadStoryPreview> parseHentai2ReadHomePreviews(String html) {
+  final previews = <Hentai2ReadStoryPreview>[];
+  final seenSlugs = <String>{};
+  final anchorPattern = RegExp(
+    r'<a[^>]+href="(https?://hentai2read\.com/[^"]+/)"[^>]*class="[^"]*title[^"]*"[^>]*>(.*?)</a>',
+    caseSensitive: false,
+    dotAll: true,
+  );
+
+  for (final match in anchorPattern.allMatches(html)) {
+    final sourceLink = match.group(1)!;
+    final slug = extractHentai2ReadStorySlug(sourceLink);
+
+    if (slug == null || !seenSlugs.add(slug)) {
+      continue;
+    }
+
+    final rawTitle = match.group(2) ?? '';
+    final title = _stripHtml(rawTitle) ?? _titleFromSlug(slug);
+    final contextStart = (match.start - 1400).clamp(0, html.length).toInt();
+    final contextHtml = html.substring(contextStart, match.end);
+    final thumbnailUrl = _lastHtmlImageSource(contextHtml);
+
+    previews.add(
+      Hentai2ReadStoryPreview(
+        slug: slug,
+        title: title,
+        sourceLink: _hentai2ReadStoryLink(slug),
+        thumbnailUrl: thumbnailUrl,
+      ),
+    );
+  }
+
+  return List<Hentai2ReadStoryPreview>.unmodifiable(previews);
+}
+
+Future<Hentai2ReadStoryDetail> fetchHentai2ReadStoryDetail(
+  String sourceLink,
+) async {
+  final slug = extractHentai2ReadStorySlug(sourceLink);
+  final fallback = Hentai2ReadStoryDetail(
+    story: Hentai2ReadStoryPreview(
+      slug: slug ?? 'hentai2read',
+      title: slug == null ? 'Hentai2Read Story' : _titleFromSlug(slug),
+      sourceLink: slug == null ? sourceLink : _hentai2ReadStoryLink(slug),
+    ),
+    chapters: const <Hentai2ReadChapterPreview>[],
+  );
+
+  if (slug == null) {
+    return fallback;
+  }
+
+  try {
+    final response = await http
+        .get(
+          Uri.https('hentai2read.com', '/$slug/'),
+          headers: _readerRequestHeaders('hentai2read.com'),
+        )
+        .timeout(_privateSourceRequestTimeout);
+
+    if (response.statusCode != 200) {
+      return fallback;
+    }
+
+    return parseHentai2ReadStoryDetail(
+      response.body,
+      sourceLink: _hentai2ReadStoryLink(slug),
+      fallbackSlug: slug,
+    );
+  } catch (_) {
+    return fallback;
+  }
+}
+
+Hentai2ReadStoryDetail parseHentai2ReadStoryDetail(
+  String html, {
+  required String sourceLink,
+  required String fallbackSlug,
+}) {
+  final title =
+      _firstMetaContent(html, 'og:title') ??
+      _firstHeadingText(html) ??
+      _titleFromSlug(fallbackSlug);
+  final thumbnailUrl =
+      _firstMetaContent(html, 'og:image') ?? _lastHtmlImageSource(html);
+  final story = Hentai2ReadStoryPreview(
+    slug: fallbackSlug,
+    title: title,
+    sourceLink: _hentai2ReadStoryLink(fallbackSlug),
+    thumbnailUrl: thumbnailUrl,
+  );
+
+  final chapters = parseHentai2ReadChapterPreviews(
+    html,
+    storyTitle: story.title,
+    thumbnailUrl: story.thumbnailUrl,
+  );
+
+  return Hentai2ReadStoryDetail(story: story, chapters: chapters);
+}
+
+List<Hentai2ReadChapterPreview> parseHentai2ReadChapterPreviews(
+  String html, {
+  required String storyTitle,
+  String? thumbnailUrl,
+}) {
+  final chapters = <Hentai2ReadChapterPreview>[];
+  final seenLinks = <String>{};
+  final chapterPattern = RegExp(
+    r'<a[^>]+href="(https?://hentai2read\.com/([^"/]+)/(\d+)/)"[^>]*>(.*?)</a>',
+    caseSensitive: false,
+    dotAll: true,
+  );
+
+  for (final match in chapterPattern.allMatches(html)) {
+    final sourceLink = match.group(1)!;
+    if (!seenLinks.add(sourceLink)) {
+      continue;
+    }
+
+    final chapterId = match.group(3)!;
+    final rawLabel = (match.group(4) ?? '')
+        .split(RegExp(r'<div', caseSensitive: false))
+        .first;
+    final chapterLabel = _hentai2ReadChapterLabel(rawLabel, chapterId);
+
+    chapters.add(
+      Hentai2ReadChapterPreview(
+        chapterId: chapterId,
+        sourceLink: sourceLink,
+        title: storyTitle,
+        chapterLabel: chapterLabel,
+        thumbnailUrl: thumbnailUrl,
+      ),
+    );
+  }
+
+  if (chapters.isEmpty) {
+    final fallbackSourceLink = sourceLinkFromHtml(html);
+    final slug = fallbackSourceLink == null
+        ? null
+        : extractHentai2ReadStorySlug(fallbackSourceLink);
+    if (slug != null) {
+      chapters.add(
+        Hentai2ReadChapterPreview(
+          chapterId: '1',
+          sourceLink: _hentai2ReadChapterLink(slug, '1'),
+          title: storyTitle,
+          chapterLabel: 'Chapter 1',
+          thumbnailUrl: thumbnailUrl,
+        ),
+      );
+    }
+  }
+
+  chapters.sort((a, b) {
+    final left = int.tryParse(a.chapterId) ?? 0;
+    final right = int.tryParse(b.chapterId) ?? 0;
+    return left.compareTo(right);
+  });
+
+  return List<Hentai2ReadChapterPreview>.unmodifiable(chapters);
+}
+
+Future<StoryFetchResult> fetchHentai2ReadStory(String link) async {
+  final target = extractHentai2ReadTarget(link);
+  final fallback = StoryFetchResult(
+    images: const <DriveImage>[],
+    metadata: StoryMetadata(
+      sourceType: StorySourceType.hentai2ReadChapter,
+      title: target == null ? 'Hentai2Read Story' : _titleFromSlug(target),
+    ),
+    errorMessage: target == null
+        ? 'Paste a valid Hentai2Read story or chapter link.'
+        : 'Hentai2Read did not return readable pages.',
+  );
+
+  if (target == null) {
+    return fallback;
+  }
+
+  var readerLink = link;
+  String? title;
+  String? chapterLabel;
+
+  if (!target.contains('/')) {
+    final detail = await fetchHentai2ReadStoryDetail(link);
+    if (detail.chapters.isEmpty) {
+      return fallback;
+    }
+
+    final firstChapter = detail.chapters.first;
+    readerLink = firstChapter.sourceLink;
+    title = detail.story.title;
+    chapterLabel = firstChapter.chapterLabel;
+  }
+
+  final uri = _hentai2ReadUri(readerLink);
+  if (uri == null) {
+    return fallback;
+  }
+
+  try {
+    final response = await http
+        .get(uri, headers: _readerRequestHeaders('hentai2read.com'))
+        .timeout(_privateSourceRequestTimeout);
+
+    if (response.statusCode != 200) {
+      return fallback;
+    }
+
+    return parseHentai2ReadReaderPage(
+      response.body,
+      sourceLink: readerLink,
+      fallbackTitle: title,
+      fallbackChapterLabel: chapterLabel,
+    );
+  } catch (_) {
+    return StoryFetchResult(
+      images: fallback.images,
+      metadata: fallback.metadata,
+      errorMessage: 'Hentai2Read could not be reached on this network.',
+    );
+  }
+}
+
+StoryFetchResult parseHentai2ReadReaderPage(
+  String html, {
+  required String sourceLink,
+  String? fallbackTitle,
+  String? fallbackChapterLabel,
+}) {
+  final slug = extractHentai2ReadStorySlug(sourceLink);
+  final target = extractHentai2ReadTarget(sourceLink);
+  final chapterId = target?.contains('/') ?? false
+      ? target!.split('/').last
+      : null;
+  final title =
+      _hentai2ReadScriptValue(html, 'title') ??
+      fallbackTitle ??
+      (slug == null ? 'Hentai2Read Story' : _titleFromSlug(slug));
+  final chapterLabel =
+      fallbackChapterLabel ?? (chapterId == null ? null : 'Chapter $chapterId');
+  final images = _hentai2ReadScriptImages(html);
+
+  if (images.isEmpty) {
+    return StoryFetchResult(
+      images: const <DriveImage>[],
+      metadata: StoryMetadata(
+        sourceType: StorySourceType.hentai2ReadChapter,
+        title: title,
+        chapterLabel: chapterLabel,
+      ),
+      errorMessage: 'Hentai2Read did not include readable pages.',
+    );
+  }
+
+  return StoryFetchResult(
+    images: List<DriveImage>.unmodifiable(images),
+    metadata: StoryMetadata(
+      sourceType: StorySourceType.hentai2ReadChapter,
+      title: title,
+      chapterLabel: chapterLabel,
+    ),
+  );
+}
+
+List<DriveImage> _hentai2ReadScriptImages(String html) {
+  final imagesMatch = RegExp(
+    r'''['"]images['"]\s*:\s*\[(.*?)\]''',
+    caseSensitive: false,
+    dotAll: true,
+  ).firstMatch(html);
+
+  if (imagesMatch == null) {
+    return const <DriveImage>[];
+  }
+
+  final images = <DriveImage>[];
+  for (final match in RegExp(
+    r'''['"]((?:\\.|[^'"\\])+)['"]''',
+    dotAll: true,
+  ).allMatches(imagesMatch.group(1)!)) {
+    final rawPath = match.group(1)!.replaceAll(r'\/', '/');
+    final pageUrl = rawPath.startsWith('http')
+        ? rawPath
+        : 'https://static.hentai.direct/hentai${rawPath.startsWith('/') ? rawPath : '/$rawPath'}';
+    images.add(DriveImage(thumbnailUrl: pageUrl, fullUrl: pageUrl));
+  }
+
+  return List<DriveImage>.unmodifiable(images);
+}
+
+String? _hentai2ReadScriptValue(String html, String key) {
+  final pattern = RegExp(
+    '''['"]$key['"]\\s*:\\s*['"]((?:\\\\.|[^'"\\\\])*)['"]''',
+    caseSensitive: false,
+  );
+  final match = pattern.firstMatch(html);
+
+  if (match == null) {
+    return null;
+  }
+
+  return _decodeHtmlEntities(match.group(1)!.replaceAll(r'\/', '/'));
+}
+
+String? sourceLinkFromHtml(String html) {
+  final canonical = _firstMetaContent(html, 'og:url');
+  if (canonical != null) {
+    return canonical;
+  }
+
+  final match = RegExp(
+    r'https?://hentai2read\.com/[a-zA-Z0-9_-]+/',
+    caseSensitive: false,
+  ).firstMatch(html);
+  return match?.group(0);
+}
+
+String? _firstMetaContent(String html, String property) {
+  final escapedProperty = RegExp.escape(property);
+  final pattern = RegExp(
+    '<meta[^>]+(?:property|name)=["'
+    ']$escapedProperty["'
+    '][^>]+content=["'
+    ']([^"'
+    ']+)["'
+    '][^>]*>',
+    caseSensitive: false,
+  );
+  final match = pattern.firstMatch(html);
+
+  if (match == null) {
+    return null;
+  }
+
+  return _decodeHtmlEntities(match.group(1)!);
+}
+
+String? _firstHeadingText(String html) {
+  final match = RegExp(
+    r'<h1[^>]*>(.*?)</h1>',
+    caseSensitive: false,
+    dotAll: true,
+  ).firstMatch(html);
+
+  if (match == null) {
+    return null;
+  }
+
+  return _stripHtml(match.group(1)!);
+}
+
+String? _lastHtmlImageSource(String html) {
+  String? source;
+  final pattern = RegExp(
+    r'<img[^>]+(?:src|data-src)=["'
+    ']([^"'
+    ']+)["'
+    '][^>]*>',
+    caseSensitive: false,
+    dotAll: true,
+  );
+
+  for (final match in pattern.allMatches(html)) {
+    source = _decodeHtmlEntities(match.group(1)!);
+  }
+
+  return source;
+}
+
+String? _stripHtml(String html) {
+  final cleaned = html
+      .replaceAll(
+        RegExp(r'<script.*?</script>', caseSensitive: false, dotAll: true),
+        ' ',
+      )
+      .replaceAll(
+        RegExp(r'<style.*?</style>', caseSensitive: false, dotAll: true),
+        ' ',
+      )
+      .replaceAll(RegExp(r'<[^>]+>'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
+  if (cleaned.isEmpty) {
+    return null;
+  }
+
+  return _decodeHtmlEntities(cleaned);
+}
+
+String _hentai2ReadChapterLabel(String html, String chapterId) {
+  final text = _stripHtml(html);
+
+  if (text == null) {
+    return 'Chapter $chapterId';
+  }
+
+  final cleaned = text.replaceFirst(RegExp(r'^\d+\s*-\s*'), '').trim();
+
+  if (cleaned.isEmpty) {
+    return 'Chapter $chapterId';
+  }
+
+  return 'Chapter $chapterId - $cleaned';
+}
+
+String _titleFromSlug(String slug) {
+  return slug
+      .split(RegExp(r'[_-]+'))
+      .where((part) => part.isNotEmpty)
+      .map((part) => part[0].toUpperCase() + part.substring(1))
+      .join(' ');
+}
+
+String _decodeHtmlEntities(String value) {
+  return value
+      .replaceAll('&amp;', '&')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&#039;', "'")
+      .replaceAll('&#39;', "'")
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .trim();
 }
 
 String? extractNHentaiGalleryId(String link) {
@@ -6002,10 +7316,7 @@ Future<List<HitomiGalleryPreview>> fetchHitomiHomeGalleries({
         return const <HitomiGalleryPreview>[];
       }
 
-      galleryIds = parseHitomiNozomiIds(
-        response.bodyBytes,
-        limit: limit * 4,
-      );
+      galleryIds = parseHitomiNozomiIds(response.bodyBytes, limit: limit * 4);
       routing = await fetchHitomiRouting();
     }
 
@@ -6019,7 +7330,9 @@ Future<List<HitomiGalleryPreview>> fetchHitomiHomeGalleries({
 
       currentIndex += batchIds.length;
 
-      final futures = batchIds.map((id) => fetchHitomiGalleryPreview(id, routing));
+      final futures = batchIds.map(
+        (id) => fetchHitomiGalleryPreview(id, routing),
+      );
       final results = await Future.wait(futures);
 
       for (final preview in results) {
@@ -6375,9 +7688,7 @@ HitomiRouting parseHitomiRoutingScript(String script) {
   // collecting all keys from the o=0 block and noting that everything else is
   // mirror 1. Because we cannot enumerate "everything else", we fall back to
   // an empty oneSubdomainKeys set (all keys → w1) which is a safe default.
-  return HitomiRouting(
-    versionPath: versionPath,
-  );
+  return HitomiRouting(versionPath: versionPath);
 }
 
 int hitomiRoutingKey(String hash) {
@@ -6461,6 +7772,10 @@ Map<String, String>? _readerImageRequestHeaders(String url) {
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
           '(KHTML, like Gecko) KevDex/2.2 Safari/537.36',
     };
+  }
+
+  if (host.contains('hentaicdn') || host.contains('hentai.direct')) {
+    return _readerRequestHeaders('hentai2read.com');
   }
 
   if (host.contains('nhentai')) {

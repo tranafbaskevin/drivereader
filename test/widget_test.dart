@@ -40,6 +40,14 @@ void main() {
       detectStorySource('https://hitomi.la/galleries/7654321.html'),
       StorySourceType.hitomiGallery,
     );
+    expect(
+      extractHentai2ReadStorySlug('https://hentai2read.com/sample_story/2/'),
+      'sample_story',
+    );
+    expect(
+      detectStorySource('https://hentai2read.com/sample_story/2/'),
+      StorySourceType.hentai2ReadChapter,
+    );
   });
 
   test('Private source settings migrate thumbnail blur on', () {
@@ -171,6 +179,77 @@ void main() {
     expect(previews.first.language, 'en');
   });
 
+  test('Hentai2Read home HTML becomes story previews', () {
+    const html = '''
+      <div class="book-grid-item-container" data-mid="71500">
+        <img src="https://img1.hentaicdn.com/hentai/cover/_S71500.jpg" alt="Sample Story">
+        <a href="https://hentai2read.com/sample_story/" class="title">
+          <span class="title-text">Sample Story</span>
+        </a>
+      </div>
+    ''';
+
+    final previews = parseHentai2ReadHomePreviews(html);
+
+    expect(previews, hasLength(1));
+    expect(previews.first.slug, 'sample_story');
+    expect(previews.first.title, 'Sample Story');
+    expect(previews.first.sourceLink, 'https://hentai2read.com/sample_story/');
+    expect(
+      previews.first.thumbnailUrl,
+      'https://img1.hentaicdn.com/hentai/cover/_S71500.jpg',
+    );
+  });
+
+  test('Hentai2Read detail HTML becomes chapter previews', () {
+    const html = '''
+      <meta property="og:title" content="Sample Story">
+      <meta property="og:image" content="https://img1.hentaicdn.com/hentai/cover/_S71500.jpg">
+      <div id="availableChapters">
+        <a class="pull-left font-w600" href="https://hentai2read.com/sample_story/2/">
+          2 - Sample Story Two<div>uploaded today</div>
+        </a>
+        <a class="pull-left font-w600" href="https://hentai2read.com/sample_story/1/">
+          1 - Sample Story One<div>uploaded yesterday</div>
+        </a>
+      </div>
+    ''';
+
+    final detail = parseHentai2ReadStoryDetail(
+      html,
+      sourceLink: 'https://hentai2read.com/sample_story/',
+      fallbackSlug: 'sample_story',
+    );
+
+    expect(detail.story.title, 'Sample Story');
+    expect(detail.chapters, hasLength(2));
+    expect(detail.chapters.first.chapterId, '1');
+    expect(detail.chapters.first.chapterLabel, 'Chapter 1 - Sample Story One');
+    expect(detail.chapters.last.chapterId, '2');
+  });
+
+  test('Hentai2Read reader script becomes reader pages', () {
+    const html = '''
+      <script>
+        var gData = {'mangaID':35894,'title':'Sample Story',
+          'images':["\\/35894\\/1\\/ccdn0001.jpg","\\/35894\\/1\\/ccdn0002.jpg"]};
+      </script>
+    ''';
+
+    final result = parseHentai2ReadReaderPage(
+      html,
+      sourceLink: 'https://hentai2read.com/sample_story/1/',
+    );
+
+    expect(result.metadata.sourceType, StorySourceType.hentai2ReadChapter);
+    expect(result.metadata.title, 'Sample Story');
+    expect(result.metadata.chapterLabel, 'Chapter 1');
+    expect(result.images, hasLength(2));
+    expect(
+      result.images.first.fullUrl,
+      'https://static.hentai.direct/hentai/35894/1/ccdn0001.jpg',
+    );
+  });
   test('NHentai gallery payloads become reader pages', () {
     final result = parseNHentaiGalleryPayload({
       'media_id': '999999',
@@ -326,6 +405,7 @@ void main() {
 
     expect(find.text('Ready'), findsWidgets);
     expect(find.text('Private Sources'), findsOneWidget);
+    expect(find.text('Hentai2Read'), findsNothing);
     expect(find.text('NHentai'), findsNothing);
     expect(find.text('Hitomi'), findsNothing);
     expect(find.byTooltip('Clear app cache'), findsOneWidget);
@@ -350,6 +430,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Private Ready'), findsOneWidget);
+    expect(find.text('Hentai2Read'), findsWidgets);
     expect(find.text('NHentai'), findsWidgets);
     expect(find.text('Hitomi'), findsWidgets);
     expect(find.text('Blur Private Thumbnails'), findsOneWidget);
@@ -412,6 +493,16 @@ void main() {
     expect(find.byTooltip('Open NHentai'), findsOneWidget);
     expect(find.text('NHentai opens through Private Sources.'), findsOneWidget);
     expect(find.text('Paste NHentai gallery link'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(FilterChip, 'Hentai2Read'));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Open Hentai2Read Home'), findsOneWidget);
+    expect(find.byTooltip('Open Hentai2Read'), findsOneWidget);
+    expect(
+      find.text('Paste Hentai2Read story or chapter link'),
+      findsOneWidget,
+    );
 
     await tester.tap(find.widgetWithText(FilterChip, 'Hitomi'));
     await tester.pumpAndSettle();
@@ -543,6 +634,8 @@ void main() {
     expect(find.text('Saved Story 3'), findsOneWidget);
     expect(find.text('Saved Story 4'), findsNothing);
 
+    await tester.ensureVisible(find.byTooltip('Open full Library'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Open full Library'));
     await tester.pumpAndSettle();
 
