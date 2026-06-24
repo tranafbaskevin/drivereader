@@ -196,20 +196,35 @@ class StoryMetadata {
 class PrivateSourceSettings {
   final bool enabled;
   final int? acceptedAtMs;
+  final bool blurPrivateThumbnails;
 
-  const PrivateSourceSettings({required this.enabled, this.acceptedAtMs});
+  const PrivateSourceSettings({
+    required this.enabled,
+    this.acceptedAtMs,
+    this.blurPrivateThumbnails = true,
+  });
 
   bool get isAccepted => enabled && acceptedAtMs != null;
 
-  PrivateSourceSettings copyWith({bool? enabled, int? acceptedAtMs}) {
+  PrivateSourceSettings copyWith({
+    bool? enabled,
+    int? acceptedAtMs,
+    bool? blurPrivateThumbnails,
+  }) {
     return PrivateSourceSettings(
       enabled: enabled ?? this.enabled,
       acceptedAtMs: acceptedAtMs ?? this.acceptedAtMs,
+      blurPrivateThumbnails:
+          blurPrivateThumbnails ?? this.blurPrivateThumbnails,
     );
   }
 
   Map<String, Object?> toJson() {
-    return {'enabled': enabled, 'acceptedAtMs': acceptedAtMs};
+    return {
+      'enabled': enabled,
+      'acceptedAtMs': acceptedAtMs,
+      'blurPrivateThumbnails': blurPrivateThumbnails,
+    };
   }
 
   static PrivateSourceSettings? fromJson(Object? value) {
@@ -219,14 +234,18 @@ class PrivateSourceSettings {
 
     final enabled = value['enabled'];
     final acceptedAtMs = value['acceptedAtMs'];
+    final blurPrivateThumbnails = value['blurPrivateThumbnails'];
 
-    if (enabled is! bool || (acceptedAtMs != null && acceptedAtMs is! int)) {
+    if (enabled is! bool ||
+        (acceptedAtMs != null && acceptedAtMs is! int) ||
+        (blurPrivateThumbnails != null && blurPrivateThumbnails is! bool)) {
       return null;
     }
 
     return PrivateSourceSettings(
       enabled: enabled,
       acceptedAtMs: acceptedAtMs as int?,
+      blurPrivateThumbnails: blurPrivateThumbnails as bool? ?? true,
     );
   }
 }
@@ -321,6 +340,49 @@ class HitomiGalleryPreview {
     required this.pageCount,
     this.language,
   });
+}
+
+class MangaDexChapterPreview {
+  final String chapterId;
+  final String sourceLink;
+  final String title;
+  final String? chapterLabel;
+  final String? mangaId;
+  final String? thumbnailUrl;
+  final int? pageCount;
+  final String? language;
+
+  const MangaDexChapterPreview({
+    required this.chapterId,
+    required this.sourceLink,
+    required this.title,
+    this.chapterLabel,
+    this.mangaId,
+    this.thumbnailUrl,
+    this.pageCount,
+    this.language,
+  });
+
+  MangaDexChapterPreview copyWith({String? thumbnailUrl}) {
+    return MangaDexChapterPreview(
+      chapterId: chapterId,
+      sourceLink: sourceLink,
+      title: title,
+      chapterLabel: chapterLabel,
+      mangaId: mangaId,
+      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
+      pageCount: pageCount,
+      language: language,
+    );
+  }
+
+  StoryMetadata get metadata {
+    return StoryMetadata(
+      sourceType: StorySourceType.mangaDexChapter,
+      title: title,
+      chapterLabel: chapterLabel,
+    );
+  }
 }
 
 class ReadingProgress {
@@ -1503,6 +1565,13 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  void _openMangaDexHome() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const MangaDexHomePage()),
+    );
+  }
+
   void _openHitomiHome() {
     if (!privateSourceSettingsNotifier.value.isAccepted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1558,6 +1627,7 @@ class _HomePageState extends State<HomePage> {
                       isOpening: isOpening,
                       onSelectSource: _selectSource,
                       onShowSourceHub: _showSourceHub,
+                      onOpenMangaDexHome: _openMangaDexHome,
                       onOpenHitomiHome: _openHitomiHome,
                       onOpen: () => _openReader(selectedSourceType),
                       onClear: () {
@@ -2041,6 +2111,7 @@ class _SourceHubPanel extends StatelessWidget {
   final bool isOpening;
   final ValueChanged<StorySourceType> onSelectSource;
   final VoidCallback onShowSourceHub;
+  final VoidCallback onOpenMangaDexHome;
   final VoidCallback onOpenHitomiHome;
   final VoidCallback onOpen;
   final VoidCallback onClear;
@@ -2054,6 +2125,7 @@ class _SourceHubPanel extends StatelessWidget {
     required this.isOpening,
     required this.onSelectSource,
     required this.onShowSourceHub,
+    required this.onOpenMangaDexHome,
     required this.onOpenHitomiHome,
     required this.onOpen,
     required this.onClear,
@@ -2164,6 +2236,25 @@ class _SourceHubPanel extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 14),
+          if (selectedSourceType == StorySourceType.mangaDexChapter) ...[
+            Tooltip(
+              message: 'Open MangaDex Home',
+              child: OutlinedButton.icon(
+                onPressed: isOpening ? null : onOpenMangaDexHome,
+                icon: const Icon(Icons.explore_rounded),
+                label: const Text('MangaDex Home'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _primaryAccent,
+                  side: const BorderSide(color: Color(0xFF3C6F60)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+          ],
           if (selectedSourceType == StorySourceType.hitomiGallery) ...[
             Tooltip(
               message: 'Open Hitomi Home',
@@ -2485,6 +2576,15 @@ class _SourceHubSheet extends StatelessWidget {
                           onClearPrivateHistory: () {
                             unawaited(_confirmClearPrivateHistory(context));
                           },
+                          onBlurChanged: (enabled) {
+                            unawaited(
+                              KevDexMemory.savePrivateSourceSettings(
+                                settings.copyWith(
+                                  blurPrivateThumbnails: enabled,
+                                ),
+                              ),
+                            );
+                          },
                         ),
                         if (visiblePrivateSources.isNotEmpty) ...[
                           const SizedBox(height: 18),
@@ -2552,11 +2652,13 @@ class _PrivateSourceGateCard extends StatelessWidget {
   final PrivateSourceSettings settings;
   final ValueChanged<bool> onChanged;
   final VoidCallback onClearPrivateHistory;
+  final ValueChanged<bool> onBlurChanged;
 
   const _PrivateSourceGateCard({
     required this.settings,
     required this.onChanged,
     required this.onClearPrivateHistory,
+    required this.onBlurChanged,
   });
 
   @override
@@ -2607,7 +2709,7 @@ class _PrivateSourceGateCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             isAccepted
-                ? 'Private adapters are visible in Source Hub. Private thumbnails stay covered in Library and Continue Reading.'
+                ? 'Private adapters are visible in Source Hub.'
                 : 'Private adapters stay hidden until you choose to show them.',
             style: const TextStyle(
               color: _mutedText,
@@ -2617,6 +2719,45 @@ class _PrivateSourceGateCard extends StatelessWidget {
             ),
           ),
           if (isAccepted) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: _fieldColor,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFF393745)),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    settings.blurPrivateThumbnails
+                        ? Icons.visibility_off_rounded
+                        : Icons.visibility_rounded,
+                    color: _primaryAccent,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'Blur Private Thumbnails',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  Tooltip(
+                    message: 'Toggle thumbnail blur',
+                    child: Switch(
+                      value: settings.blurPrivateThumbnails,
+                      activeThumbColor: _primaryAccent,
+                      onChanged: onBlurChanged,
+                    ),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 12),
             Tooltip(
               message: 'Clear private history',
@@ -3209,6 +3350,337 @@ class _LibraryItemCard extends StatelessWidget {
                 icon: const Icon(Icons.close_rounded, size: 19),
                 color: _mutedText,
                 onPressed: onRemove,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class MangaDexHomePage extends StatefulWidget {
+  final Future<List<MangaDexChapterPreview>> Function()? chapterLoader;
+
+  const MangaDexHomePage({super.key, this.chapterLoader});
+
+  @override
+  State<MangaDexHomePage> createState() => _MangaDexHomePageState();
+}
+
+class _MangaDexHomePageState extends State<MangaDexHomePage> {
+  late Future<List<MangaDexChapterPreview>> chaptersFuture;
+  String? openingChapterId;
+
+  @override
+  void initState() {
+    super.initState();
+    chaptersFuture = _loadChapters();
+  }
+
+  Future<List<MangaDexChapterPreview>> _loadChapters() {
+    final loader = widget.chapterLoader;
+
+    if (loader != null) {
+      return loader();
+    }
+
+    return fetchMangaDexHomeChapters();
+  }
+
+  void _refresh() {
+    setState(() {
+      chaptersFuture = _loadChapters();
+    });
+  }
+
+  Future<void> _openChapter(MangaDexChapterPreview chapter) async {
+    if (openingChapterId != null) {
+      return;
+    }
+
+    setState(() {
+      openingChapterId = chapter.chapterId;
+    });
+
+    List<DriveImage> images = const <DriveImage>[];
+    StoryMetadata metadata = chapter.metadata;
+    String? errorMessage;
+
+    try {
+      images = await fetchMangaDexChapterImages(chapter.chapterId);
+      metadata = await fetchMangaDexChapterMetadata(chapter.chapterId);
+    } catch (_) {
+      errorMessage = 'MangaDex chapter could not be reached.';
+    } finally {
+      if (mounted) {
+        setState(() {
+          openingChapterId = null;
+        });
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    if (images.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            errorMessage ?? 'MangaDex did not return readable pages.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    await KevDexMemory.saveLastLink(chapter.sourceLink);
+    await KevDexMemory.saveLastMangaDexLink(chapter.sourceLink);
+
+    final progress = ReadingProgress(
+      sourceLink: chapter.sourceLink,
+      images: List<DriveImage>.unmodifiable(images),
+      pageIndex: 0,
+      metadata: metadata,
+    );
+
+    readingProgressNotifier.value = progress;
+    unawaited(KevDexMemory.saveReadingProgress(progress));
+
+    if (!mounted) {
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ReaderPage(
+          link: chapter.sourceLink,
+          images: images,
+          initialIndex: 0,
+          startInGallery: false,
+          metadata: metadata,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _KevDexBackground(
+        overlayOpacity: 0.86,
+        child: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 10, 16, 12),
+                child: Row(
+                  children: [
+                    IconButton(
+                      tooltip: 'Back',
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      color: Colors.white,
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                    const SizedBox(width: 4),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'MangaDex Home',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          SizedBox(height: 3),
+                          Text(
+                            'Latest Chapters',
+                            style: TextStyle(
+                              color: _mutedText,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Refresh MangaDex Home',
+                      icon: const Icon(Icons.refresh_rounded),
+                      color: _primaryAccent,
+                      onPressed: _refresh,
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: FutureBuilder<List<MangaDexChapterPreview>>(
+                  future: chaptersFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState != ConnectionState.done) {
+                      return const _MangaLoadingState();
+                    }
+
+                    if (snapshot.hasError) {
+                      return const _ReaderMessageState(
+                        icon: Icons.explore_rounded,
+                        title: 'MangaDex Home could not load.',
+                        message: 'Refresh or check the network.',
+                      );
+                    }
+
+                    final chapters =
+                        snapshot.data ?? const <MangaDexChapterPreview>[];
+
+                    if (chapters.isEmpty) {
+                      return const _ReaderMessageState(
+                        icon: Icons.explore_rounded,
+                        title: 'No MangaDex chapters found.',
+                        message: 'Refresh or check the network.',
+                      );
+                    }
+
+                    return ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                      itemCount: chapters.length,
+                      separatorBuilder: (context, index) =>
+                          const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        final chapter = chapters[index];
+
+                        return _MangaDexChapterCard(
+                          chapter: chapter,
+                          isOpening: openingChapterId == chapter.chapterId,
+                          onOpen: () => _openChapter(chapter),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MangaDexChapterCard extends StatelessWidget {
+  final MangaDexChapterPreview chapter;
+  final bool isOpening;
+  final VoidCallback onOpen;
+
+  const _MangaDexChapterCard({
+    required this.chapter,
+    required this.isOpening,
+    required this.onOpen,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final details = <String>[
+      chapter.chapterLabel ?? 'Chapter',
+      if (chapter.pageCount != null) '${chapter.pageCount} pages',
+      if (chapter.language != null) chapter.language!,
+    ].join(' - ');
+    final thumbnailUrl = chapter.thumbnailUrl;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: isOpening ? null : onOpen,
+        borderRadius: BorderRadius.circular(8),
+        child: Ink(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: _glassSurfaceColor,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFF2F2D39)),
+          ),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: SizedBox(
+                  width: 64,
+                  height: 86,
+                  child: thumbnailUrl == null
+                      ? const ColoredBox(
+                          color: _fieldColor,
+                          child: Icon(
+                            Icons.menu_book_rounded,
+                            color: _primaryAccent,
+                          ),
+                        )
+                      : CachedNetworkImage(
+                          imageUrl: thumbnailUrl,
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) =>
+                              const _ThumbnailPlaceholder(),
+                          errorWidget: (context, url, error) =>
+                              const _ThumbnailPlaceholder(),
+                        ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      chapter.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    Text(
+                      details,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: _mutedText,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    const Text(
+                      'MangaDex',
+                      style: TextStyle(
+                        color: _primaryAccent,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 28,
+                height: 28,
+                child: isOpening
+                    ? const CircularProgressIndicator(
+                        strokeWidth: 2.2,
+                        color: _primaryAccent,
+                      )
+                    : const Icon(
+                        Icons.arrow_forward_rounded,
+                        color: _primaryAccent,
+                      ),
               ),
             ],
           ),
@@ -4463,24 +4935,35 @@ class _PrivateThumbnailFrame extends StatelessWidget {
       return child;
     }
 
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        Positioned.fill(
-          child: ImageFiltered(
-            imageFilter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-            child: child,
-          ),
-        ),
-        const DecoratedBox(decoration: BoxDecoration(color: Color(0xAA101016))),
-        const Center(
-          child: Icon(
-            Icons.visibility_off_rounded,
-            color: _primaryAccent,
-            size: 24,
-          ),
-        ),
-      ],
+    return ValueListenableBuilder<PrivateSourceSettings>(
+      valueListenable: privateSourceSettingsNotifier,
+      builder: (context, settings, _) {
+        if (!settings.blurPrivateThumbnails) {
+          return child;
+        }
+
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            Positioned.fill(
+              child: ImageFiltered(
+                imageFilter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                child: child,
+              ),
+            ),
+            const DecoratedBox(
+              decoration: BoxDecoration(color: Color(0xAA101016)),
+            ),
+            const Center(
+              child: Icon(
+                Icons.visibility_off_rounded,
+                color: _primaryAccent,
+                size: 24,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -5501,6 +5984,150 @@ Future<List<DriveImage>> fetchDriveFolderImages(String folderId) async {
       .toList();
 }
 
+Future<List<MangaDexChapterPreview>> fetchMangaDexHomeChapters({
+  int limit = 20,
+}) async {
+  try {
+    final response = await http.get(
+      Uri.https('api.mangadex.org', '/chapter', {
+        'limit': limit.toString(),
+        'translatedLanguage[]': 'en',
+        'includes[]': 'manga',
+        'contentRating[]': ['safe', 'suggestive', 'erotica'],
+        'order[readableAt]': 'desc',
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      return const <MangaDexChapterPreview>[];
+    }
+
+    final decoded = jsonDecode(response.body);
+    final previews = parseMangaDexChapterPreviews(decoded);
+    final mangaIds = previews
+        .map((preview) => preview.mangaId)
+        .whereType<String>()
+        .toSet()
+        .toList(growable: false);
+    final coverUrls = await fetchMangaDexCoverUrls(mangaIds);
+
+    return List<MangaDexChapterPreview>.unmodifiable(
+      previews.map((preview) {
+        final mangaId = preview.mangaId;
+
+        if (mangaId == null) {
+          return preview;
+        }
+
+        return preview.copyWith(thumbnailUrl: coverUrls[mangaId]);
+      }),
+    );
+  } catch (_) {
+    return const <MangaDexChapterPreview>[];
+  }
+}
+
+List<MangaDexChapterPreview> parseMangaDexChapterPreviews(Object? payload) {
+  if (payload is! Map<String, Object?>) {
+    return const <MangaDexChapterPreview>[];
+  }
+
+  final data = payload['data'];
+
+  if (data is! List) {
+    return const <MangaDexChapterPreview>[];
+  }
+
+  final previews = <MangaDexChapterPreview>[];
+
+  for (final item in data.whereType<Map>()) {
+    final id = _cleanString(item['id']);
+    final attributes = item['attributes'];
+    final relationships = item['relationships'];
+
+    if (id == null || attributes is! Map) {
+      continue;
+    }
+
+    previews.add(
+      MangaDexChapterPreview(
+        chapterId: id,
+        sourceLink: 'https://mangadex.org/chapter/$id',
+        title: _mangaDexMangaTitle(relationships) ?? 'MangaDex Chapter',
+        chapterLabel: _mangaDexChapterLabel(attributes),
+        mangaId: _mangaDexRelationshipId(relationships, 'manga'),
+        pageCount: attributes['pages'] is int
+            ? attributes['pages'] as int
+            : null,
+        language: _cleanString(attributes['translatedLanguage']),
+      ),
+    );
+  }
+
+  return List<MangaDexChapterPreview>.unmodifiable(previews);
+}
+
+Future<Map<String, String>> fetchMangaDexCoverUrls(
+  List<String> mangaIds,
+) async {
+  if (mangaIds.isEmpty) {
+    return const <String, String>{};
+  }
+
+  try {
+    final response = await http.get(
+      Uri.https('api.mangadex.org', '/cover', {
+        'limit': '100',
+        'manga[]': mangaIds,
+        'order[createdAt]': 'desc',
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      return const <String, String>{};
+    }
+
+    return parseMangaDexCoverUrls(jsonDecode(response.body));
+  } catch (_) {
+    return const <String, String>{};
+  }
+}
+
+Map<String, String> parseMangaDexCoverUrls(Object? payload) {
+  if (payload is! Map<String, Object?>) {
+    return const <String, String>{};
+  }
+
+  final data = payload['data'];
+
+  if (data is! List) {
+    return const <String, String>{};
+  }
+
+  final coverUrls = <String, String>{};
+
+  for (final item in data.whereType<Map>()) {
+    final attributes = item['attributes'];
+    final relationships = item['relationships'];
+
+    if (attributes is! Map) {
+      continue;
+    }
+
+    final fileName = _cleanString(attributes['fileName']);
+    final mangaId = _mangaDexRelationshipId(relationships, 'manga');
+
+    if (fileName == null || mangaId == null || coverUrls.containsKey(mangaId)) {
+      continue;
+    }
+
+    coverUrls[mangaId] =
+        'https://uploads.mangadex.org/covers/$mangaId/$fileName.256.jpg';
+  }
+
+  return Map<String, String>.unmodifiable(coverUrls);
+}
+
 Future<List<DriveImage>> fetchMangaDexChapterImages(String chapterId) async {
   final response = await http.get(
     Uri.https('api.mangadex.org', '/at-home/server/$chapterId'),
@@ -5601,6 +6228,22 @@ String? _mangaDexMangaTitle(Object? relationships) {
     }
 
     return _bestLocalizedTitle(attributes['title']);
+  }
+
+  return null;
+}
+
+String? _mangaDexRelationshipId(Object? relationships, String type) {
+  if (relationships is! List) {
+    return null;
+  }
+
+  for (final relationship in relationships.whereType<Map>()) {
+    if (relationship['type'] != type) {
+      continue;
+    }
+
+    return _cleanString(relationship['id']);
   }
 
   return null;

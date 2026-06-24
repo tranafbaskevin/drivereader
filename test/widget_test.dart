@@ -42,6 +42,77 @@ void main() {
     );
   });
 
+  test('Private source settings migrate thumbnail blur on', () {
+    final settings = PrivateSourceSettings.fromJson({
+      'enabled': true,
+      'acceptedAtMs': 123,
+    });
+
+    expect(settings, isNotNull);
+    expect(settings!.isAccepted, isTrue);
+    expect(settings.blurPrivateThumbnails, isTrue);
+    expect(settings.copyWith(blurPrivateThumbnails: false).toJson(), {
+      'enabled': true,
+      'acceptedAtMs': 123,
+      'blurPrivateThumbnails': false,
+    });
+  });
+
+  test('MangaDex home chapter payloads become chapter cards', () {
+    final previews = parseMangaDexChapterPreviews({
+      'data': [
+        {
+          'id': 'chapter-id-1',
+          'attributes': {
+            'chapter': '5',
+            'title': 'A Rainy Day',
+            'pages': 24,
+            'translatedLanguage': 'en',
+          },
+          'relationships': [
+            {
+              'type': 'manga',
+              'id': 'manga-id-1',
+              'attributes': {
+                'title': {'en': 'Digi Cat'},
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(previews, hasLength(1));
+    expect(previews.first.chapterId, 'chapter-id-1');
+    expect(
+      previews.first.sourceLink,
+      'https://mangadex.org/chapter/chapter-id-1',
+    );
+    expect(previews.first.title, 'Digi Cat');
+    expect(previews.first.chapterLabel, 'Chapter 5 - A Rainy Day');
+    expect(previews.first.mangaId, 'manga-id-1');
+    expect(previews.first.pageCount, 24);
+    expect(previews.first.language, 'en');
+  });
+
+  test('MangaDex cover payloads become cover URLs', () {
+    final covers = parseMangaDexCoverUrls({
+      'data': [
+        {
+          'attributes': {'fileName': 'cover-file.jpg'},
+          'relationships': [
+            {'type': 'manga', 'id': 'manga-id-1'},
+          ],
+        },
+      ],
+    });
+
+    expect(
+      covers['manga-id-1'],
+      'https://uploads.mangadex.org/covers/manga-id-1/cover-file.jpg.256.jpg',
+    );
+  });
+
   test('NHentai gallery payloads become reader pages', () {
     final result = parseNHentaiGalleryPayload({
       'media_id': '999999',
@@ -181,6 +252,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byTooltip('Open MangaDex'), findsOneWidget);
+    expect(find.byTooltip('Open MangaDex Home'), findsOneWidget);
     expect(find.byTooltip('Open Google Drive'), findsNothing);
   });
 
@@ -222,7 +294,40 @@ void main() {
     expect(find.text('Private Ready'), findsOneWidget);
     expect(find.text('NHentai'), findsWidgets);
     expect(find.text('Hitomi'), findsWidgets);
+    expect(find.text('Blur Private Thumbnails'), findsOneWidget);
+    expect(find.byTooltip('Toggle thumbnail blur'), findsOneWidget);
     expect(find.byTooltip('Clear private history'), findsOneWidget);
+
+    resetKevDexTestState();
+  });
+
+  testWidgets('Private thumbnail blur can be turned off', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    resetKevDexTestState();
+    privateSourceSettingsNotifier.value = const PrivateSourceSettings(
+      enabled: true,
+      acceptedAtMs: 123,
+      blurPrivateThumbnails: false,
+    );
+    libraryNotifier.value = const <LibraryItem>[
+      LibraryItem(
+        sourceLink: 'private-gallery-link',
+        images: [],
+        pageIndex: 0,
+        updatedAtMs: 1,
+        metadata: StoryMetadata(
+          sourceType: StorySourceType.nHentaiGallery,
+          title: 'Private Gallery',
+        ),
+      ),
+    ];
+
+    await tester.pumpWidget(const DriveReaderApp());
+
+    expect(find.text('Private Gallery'), findsOneWidget);
+    expect(find.byIcon(Icons.visibility_off_rounded), findsNothing);
 
     resetKevDexTestState();
   });
@@ -241,7 +346,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Enable'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('NHentai').last);
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilterChip, 'NHentai'));
     await tester.pumpAndSettle();
 
     expect(find.byTooltip('Open NHentai'), findsOneWidget);
@@ -415,6 +522,38 @@ void main() {
     expect(find.text('MangaDex'), findsWidgets);
 
     libraryNotifier.value = const <LibraryItem>[];
+  });
+
+  testWidgets('MangaDex Home shows latest chapter cards', (
+    WidgetTester tester,
+  ) async {
+    resetKevDexTestState();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MangaDexHomePage(
+          chapterLoader: () async => const <MangaDexChapterPreview>[
+            MangaDexChapterPreview(
+              chapterId: 'chapter-id-1',
+              sourceLink: 'https://mangadex.org/chapter/chapter-id-1',
+              title: 'Digi Cat',
+              chapterLabel: 'Chapter 5',
+              pageCount: 24,
+              language: 'en',
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('MangaDex Home'), findsOneWidget);
+    expect(find.text('Latest Chapters'), findsOneWidget);
+    expect(find.text('Digi Cat'), findsOneWidget);
+    expect(find.text('Chapter 5 - 24 pages - en'), findsOneWidget);
+    expect(find.byTooltip('Refresh MangaDex Home'), findsOneWidget);
+
+    resetKevDexTestState();
   });
 
   testWidgets('Reader empty state uses manga-friendly copy', (
