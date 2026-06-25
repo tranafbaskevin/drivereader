@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:drivereader/main.dart';
+import 'package:kevdex/main.dart';
 
 void resetKevDexTestState() {
   readingProgressNotifier.value = null;
