@@ -3537,7 +3537,11 @@ class _LibraryItemCard extends StatelessWidget {
 }
 
 class MangaDexHomePage extends StatefulWidget {
-  final Future<List<MangaDexMangaPreview>> Function({int limit, int offset})?
+  final Future<List<MangaDexMangaPreview>> Function({
+    int limit,
+    int offset,
+    String? query,
+  })?
   mangaLoader;
 
   const MangaDexHomePage({super.key, this.mangaLoader});
@@ -3548,7 +3552,10 @@ class MangaDexHomePage extends StatefulWidget {
 
 class _MangaDexHomePageState extends State<MangaDexHomePage> {
   final ScrollController _scrollController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
   final List<MangaDexMangaPreview> _mangas = [];
+  Timer? _searchDebounce;
+  String _searchQuery = '';
   bool _isLoading = false;
   bool _isLoadingMore = false;
   bool _hasMore = true;
@@ -3561,15 +3568,22 @@ class _MangaDexHomePageState extends State<MangaDexHomePage> {
     super.initState();
     _loadInitialMangas();
     _scrollController.addListener(_onScroll);
+    _searchController.addListener(_onSearchTextChanged);
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
+    _searchController
+      ..removeListener(_onSearchTextChanged)
+      ..dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
   Future<void> _loadInitialMangas() async {
+    final query = _searchQuery.trim();
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -3582,9 +3596,21 @@ class _MangaDexHomePageState extends State<MangaDexHomePage> {
       final loader = widget.mangaLoader;
       final List<MangaDexMangaPreview> list;
       if (loader != null) {
-        list = await loader(limit: _limit, offset: _offset);
+        list = await loader(
+          limit: _limit,
+          offset: _offset,
+          query: query.isEmpty ? null : query,
+        );
       } else {
-        list = await fetchMangaDexHomeMangas(limit: _limit, offset: _offset);
+        list = await fetchMangaDexHomeMangas(
+          limit: _limit,
+          offset: _offset,
+          query: query,
+        );
+      }
+
+      if (!mounted || query != _searchQuery.trim()) {
+        return;
       }
 
       setState(() {
@@ -3595,15 +3621,23 @@ class _MangaDexHomePageState extends State<MangaDexHomePage> {
         }
       });
     } catch (e) {
+      if (!mounted || query != _searchQuery.trim()) {
+        return;
+      }
+
       setState(() {
         _isLoading = false;
-        _errorMessage = 'Could not load MangaDex Home.';
+        _errorMessage = query.isEmpty
+            ? 'Could not load MangaDex Home.'
+            : 'Could not search MangaDex.';
       });
     }
   }
 
   Future<void> _loadMoreMangas() async {
     if (_isLoadingMore || !_hasMore) return;
+
+    final query = _searchQuery.trim();
 
     setState(() {
       _isLoadingMore = true;
@@ -3614,9 +3648,21 @@ class _MangaDexHomePageState extends State<MangaDexHomePage> {
       final loader = widget.mangaLoader;
       final List<MangaDexMangaPreview> list;
       if (loader != null) {
-        list = await loader(limit: _limit, offset: nextOffset);
+        list = await loader(
+          limit: _limit,
+          offset: nextOffset,
+          query: query.isEmpty ? null : query,
+        );
       } else {
-        list = await fetchMangaDexHomeMangas(limit: _limit, offset: nextOffset);
+        list = await fetchMangaDexHomeMangas(
+          limit: _limit,
+          offset: nextOffset,
+          query: query,
+        );
+      }
+
+      if (!mounted || query != _searchQuery.trim()) {
+        return;
       }
 
       setState(() {
@@ -3628,10 +3674,54 @@ class _MangaDexHomePageState extends State<MangaDexHomePage> {
         }
       });
     } catch (_) {
+      if (!mounted || query != _searchQuery.trim()) {
+        return;
+      }
+
       setState(() {
         _isLoadingMore = false;
       });
     }
+  }
+
+  String get _normalizedSearchQuery => _searchController.text.trim();
+
+  void _onSearchTextChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 450), () {
+      if (!mounted) {
+        return;
+      }
+
+      final nextQuery = _normalizedSearchQuery;
+      if (nextQuery == _searchQuery) {
+        return;
+      }
+
+      _searchQuery = nextQuery;
+      _loadInitialMangas();
+    });
+  }
+
+  void _refreshMangas() {
+    _searchDebounce?.cancel();
+    _searchQuery = _normalizedSearchQuery;
+    _loadInitialMangas();
+  }
+
+  void _clearSearch() {
+    if (_searchController.text.isEmpty && _searchQuery.isEmpty) {
+      return;
+    }
+
+    _searchDebounce?.cancel();
+    _searchController.clear();
+    _searchQuery = '';
+    _loadInitialMangas();
   }
 
   void _onScroll() {
@@ -3700,9 +3790,60 @@ class _MangaDexHomePageState extends State<MangaDexHomePage> {
                       tooltip: 'Refresh MangaDex Home',
                       icon: const Icon(Icons.refresh_rounded),
                       color: _primaryAccent,
-                      onPressed: _loadInitialMangas,
+                      onPressed: _refreshMangas,
                     ),
                   ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: TextField(
+                  controller: _searchController,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (_) => _refreshMangas(),
+                  decoration: InputDecoration(
+                    hintText: 'Search manga title...',
+                    hintStyle: const TextStyle(
+                      color: _mutedText,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.search_rounded,
+                      color: _primaryAccent,
+                    ),
+                    suffixIcon: _searchController.text.trim().isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'Clear Search',
+                            icon: const Icon(Icons.close_rounded),
+                            color: _mutedText,
+                            onPressed: _clearSearch,
+                          ),
+                    filled: true,
+                    fillColor: _glassSurfaceColor,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 14,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0xFF2F2D39)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0xFF2F2D39)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: _primaryAccent),
+                    ),
+                  ),
                 ),
               ),
               Expanded(
@@ -3716,15 +3857,23 @@ class _MangaDexHomePageState extends State<MangaDexHomePage> {
                       return _ReaderMessageState(
                         icon: Icons.explore_rounded,
                         title: _errorMessage!,
-                        message: 'Refresh or check the network.',
+                        message: _searchQuery.isEmpty
+                            ? 'Refresh or check the network.'
+                            : 'Try another title or refresh.',
                       );
                     }
 
                     if (_mangas.isEmpty) {
-                      return const _ReaderMessageState(
-                        icon: Icons.explore_rounded,
-                        title: 'No MangaDex stories found.',
-                        message: 'Refresh or check the network.',
+                      return _ReaderMessageState(
+                        icon: _searchQuery.isEmpty
+                            ? Icons.explore_rounded
+                            : Icons.search_off_rounded,
+                        title: _searchQuery.isEmpty
+                            ? 'No MangaDex stories found.'
+                            : 'No MangaDex results found.',
+                        message: _searchQuery.isEmpty
+                            ? 'Refresh or check the network.'
+                            : 'Try another manga title.',
                       );
                     }
 
@@ -4484,6 +4633,7 @@ class _Hentai2ReadHomePageState extends State<Hentai2ReadHomePage> {
                   ],
                 ),
               ),
+
               Expanded(
                 child: Builder(
                   builder: (context) {
@@ -5221,6 +5371,7 @@ class _HitomiHomePageState extends State<HitomiHomePage> {
                   ],
                 ),
               ),
+
               Expanded(
                 child: Builder(
                   builder: (context) {
@@ -7994,16 +8145,26 @@ Future<List<MangaDexChapterPreview>> fetchMangaDexHomeChapters({
 Future<List<MangaDexMangaPreview>> fetchMangaDexHomeMangas({
   int limit = 20,
   int offset = 0,
+  String? query,
 }) async {
   try {
+    final cleanQuery = query?.trim();
+    final params = <String, dynamic>{
+      'limit': limit.toString(),
+      'offset': offset.toString(),
+      'includes[]': 'cover_art',
+      'contentRating[]': ['safe', 'suggestive', 'erotica'],
+    };
+
+    if (cleanQuery != null && cleanQuery.isNotEmpty) {
+      params['title'] = cleanQuery;
+      params['order[relevance]'] = 'desc';
+    } else {
+      params['order[latestUploadedChapter]'] = 'desc';
+    }
+
     final response = await http.get(
-      Uri.https('api.mangadex.org', '/manga', {
-        'limit': limit.toString(),
-        'offset': offset.toString(),
-        'includes[]': 'cover_art',
-        'contentRating[]': ['safe', 'suggestive', 'erotica'],
-        'order[latestUploadedChapter]': 'desc',
-      }),
+      Uri.https('api.mangadex.org', '/manga', params),
     );
 
     if (response.statusCode != 200) {

@@ -683,7 +683,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: MangaDexHomePage(
-          mangaLoader: ({int? limit, int? offset}) async =>
+          mangaLoader: ({int? limit, int? offset, String? query}) async =>
               const <MangaDexMangaPreview>[
                 MangaDexMangaPreview(
                   mangaId: 'manga-id-1',
@@ -703,6 +703,58 @@ void main() {
     expect(find.text('Digi Cat'), findsOneWidget);
     expect(find.text('A cat that digs.'), findsOneWidget);
     expect(find.byTooltip('Refresh MangaDex Home'), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
+
+    resetKevDexTestState();
+  });
+
+  testWidgets('MangaDex Home searches manga titles', (
+    WidgetTester tester,
+  ) async {
+    resetKevDexTestState();
+
+    final queries = <String?>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MangaDexHomePage(
+          mangaLoader: ({int? limit, int? offset, String? query}) async {
+            queries.add(query);
+
+            if (query == 'jujut') {
+              return const <MangaDexMangaPreview>[
+                MangaDexMangaPreview(
+                  mangaId: 'jujutsu-id',
+                  title: 'Jujutsu Kaisen',
+                  description: 'Sorcery battle manga.',
+                  thumbnailUrl: null,
+                  sourceLink: 'https://mangadex.org/manga/jujutsu-id',
+                ),
+              ];
+            }
+
+            return const <MangaDexMangaPreview>[
+              MangaDexMangaPreview(
+                mangaId: 'manga-id-1',
+                title: 'Digi Cat',
+                description: 'A cat that digs.',
+                thumbnailUrl: null,
+                sourceLink: 'https://mangadex.org/manga/manga-id-1',
+              ),
+            ];
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), 'jujut');
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+
+    expect(queries, contains('jujut'));
+    expect(find.text('Jujutsu Kaisen'), findsOneWidget);
+    expect(find.text('Digi Cat'), findsNothing);
 
     resetKevDexTestState();
   });
