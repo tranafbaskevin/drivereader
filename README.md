@@ -29,6 +29,17 @@
 
 ---
 
+## Screenshots
+
+<div align="center">
+  <img src="docs/screenshots/kevdex-source-hub.png" alt="KevDex Source Hub" width="49%">
+  <img src="docs/screenshots/kevdex-mangadex-home.png" alt="MangaDex Home search" width="49%">
+  <br>
+  <img src="docs/screenshots/kevdex-manga-details.png" alt="Manga details and chapter list" width="49%">
+  <img src="docs/screenshots/kevdex-reader.png" alt="KevDex reader page" width="49%">
+</div>
+
+---
 ## 📲 Download
 
 > **[⬇ Download latest APK → Releases](https://github.com/tranafbaskevin/drivereader/releases/latest)**
