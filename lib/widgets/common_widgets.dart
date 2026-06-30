@@ -157,3 +157,96 @@ class _ReaderMessageState extends StatelessWidget {
     );
   }
 }
+
+class _KevDexHeader extends StatelessWidget {
+  const _KevDexHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        const _KevDexLogo(),
+        const SizedBox(height: 22),
+        const Text(
+          'KevDex',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 36,
+            height: 1,
+            fontWeight: FontWeight.w900,
+            color: Colors.white,
+          ),
+        ),
+        const SizedBox(height: 10),
+        const Text(
+          'Read Anywhere.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: _secondaryAccent,
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 14),
+        const Text(
+          'Google Drive / MangaDex / Hentai2Read Reader',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: _mutedText,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _KevDexLogo extends StatelessWidget {
+  const _KevDexLogo();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 92,
+      height: 92,
+      decoration: BoxDecoration(
+        color: _glassSurfaceColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF2F2D39)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x33000000),
+            blurRadius: 24,
+            offset: Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          const Icon(Icons.menu_book_rounded, size: 46, color: _primaryAccent),
+          Positioned(
+            right: 18,
+            bottom: 18,
+            child: Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: _surfaceColor,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFF393745)),
+              ),
+              child: const Icon(
+                Icons.account_tree_rounded,
+                size: 15,
+                color: _secondaryAccent,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
