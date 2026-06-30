@@ -19,6 +19,7 @@ part 'widgets/reader_gallery_widgets.dart';
 part 'widgets/source_hub_widgets.dart';
 part 'widgets/manga_detail_widgets.dart';
 part 'widgets/reader_controls.dart';
+part 'widgets/common_widgets.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -860,73 +861,6 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _KevDexBackground extends StatelessWidget {
-  final Widget child;
-  final double overlayOpacity;
-
-  const _KevDexBackground({required this.child, this.overlayOpacity = 0.74});
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<UiBackground>(
-      valueListenable: uiBackgroundNotifier,
-      child: child,
-      builder: (context, background, foreground) {
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            _BackgroundImage(background: background),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    _backgroundOverlay(overlayOpacity * 0.72),
-                    _backgroundOverlay(overlayOpacity),
-                    _backgroundOverlay(overlayOpacity * 0.92),
-                  ],
-                ),
-              ),
-            ),
-            foreground!,
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _BackgroundImage extends StatelessWidget {
-  final UiBackground background;
-
-  const _BackgroundImage({required this.background});
-
-  @override
-  Widget build(BuildContext context) {
-    if (background.isAsset) {
-      return Image.asset(
-        background.path,
-        fit: BoxFit.cover,
-        alignment: Alignment.center,
-      );
-    }
-
-    return Image.file(
-      File(background.path),
-      fit: BoxFit.cover,
-      alignment: Alignment.center,
-      errorBuilder: (context, error, stackTrace) {
-        return Image.asset(
-          _defaultBackgroundAsset,
-          fit: BoxFit.cover,
-          alignment: Alignment.center,
-        );
-      },
     );
   }
 }
